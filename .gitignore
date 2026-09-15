@@ -1,0 +1,21 @@
+bin/
+obj/
+publish/
+publish-ui/
+publish-cli/
+publish_multifile/
+*.esp
+*.csv
+smoke_out/
+*.log
+log.txt
+settings-used.json
+For Distribution/
+*.zip
+*.7z
+*.jpg
+*.jpeg
+*.png
+Thumbs.db
+__pycache__/
+NOTES.md

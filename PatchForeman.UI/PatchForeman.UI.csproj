@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SeamFinder.Core\SeamFinder.Core.csproj" />
+    <ProjectReference Include="..\PatchForeman\PatchForeman.csproj" />
+  </ItemGroup>
+
+  <!-- Bundled alongside the exe so the re-verify pass's floating-object
+       collision-awareness works standalone on any machine this is
+       downloaded to - CollisionRaycaster resolves this relative to
+       AppContext.BaseDirectory, never a hardcoded dev path. Without these,
+       the re-verify pass still runs, just falling back to heightmap-only
+       floating-object detection (a graceful degradation, not a crash). -->
+  <ItemGroup>
+    <Content Include="..\collision-raycast\extract_collision.py">
+      <Link>collision-raycast\extract_collision.py</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Trimmed PyNifly (NiflyDLL.dll + its pyn/ Python wrapper only) - GPL-3.0;
+       see pynifly\NOTICE.md for why this is fine alongside this tool's own
+       MIT license (PyNifly runs as its own separate process, never linked
+       into this binary - "mere aggregation" under GPL's own FAQ). -->
+  <ItemGroup>
+    <None Include="..\pynifly\**" CopyToOutputDirectory="PreserveNewest" LinkBase="pynifly" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <Version>0.1.2</Version>
+    <AssemblyVersion>0.1.2.0</AssemblyVersion>
+    <FileVersion>0.1.2.0</FileVersion>
+  </PropertyGroup>
+
+</Project>
