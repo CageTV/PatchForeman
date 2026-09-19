@@ -1,5 +1,10 @@
 # PatchForeman — Changelog
 
+## v0.1.3 — 2026-09-19
+
+Version-number-only release - no code change from v0.1.2. Not yet on Nexus; the CSV-report
+output fix and a UI banner text update are queued for the next real release.
+
 ## v0.1.2 — 2026-09-15
 
 **Initial public release.**

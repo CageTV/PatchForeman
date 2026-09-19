@@ -1,6 +1,6 @@
 # PatchForeman
 
-**Current version: 0.1.2** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Current version: 0.1.3** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 > **PROTOTYPE — not yet confirmed in-game.** This is a brand-new tool, built to merge the output of
 > four sibling tools into one plugin. Review the log carefully (especially any regressions the
