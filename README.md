@@ -1,10 +1,10 @@
 # PatchForeman
 
-**Current version: 0.1.3** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Current version: 0.2.0** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
 
-> **PROTOTYPE — not yet confirmed in-game.** This is a brand-new tool, built to merge the output of
-> four sibling tools into one plugin. Review the log carefully (especially any regressions the
-> re-verify pass flags) before installing the generated patch.
+> **Confirmed working by the maintainer** on a real, large (1000+ plugin) load order as of v0.2.0.
+> Still young — review the log carefully (especially any regressions the re-verify pass flags) before
+> installing the generated patch on your own list.
 
 A standalone tool for Skyrim Special Edition / Anniversary Edition that merges the separately-generated
 output plugins of four sibling landscape/reference fixer tools into **one final plugin**, with a real
@@ -29,6 +29,11 @@ a cell verbatim when only one tool touched it, and when multiple did, takes heig
 edit is more specific and **unions** the texture layers from every contributing tool (respecting the
 game's 7-layer-per-quadrant cap).
 
+**Optional 5th input: Snow Fixer.** If you also run a Snow Fixer-style tool (its entire contribution is a
+per-record "considered snow" flag), PatchForeman can fold that in too via `--snow-fixer-esp` /
+the UI's Snow Fixer checkbox. It's treated as additive-only, never as a cell's primary source of
+truth — see [CHANGELOG.md](CHANGELOG.md) v0.2.0 for exactly what that means.
+
 ## What it does
 
 1. **Merge**: reads each of the four sibling tools' own output plugins from your load order and produces
@@ -47,14 +52,13 @@ game's 7-layer-per-quadrant cap).
   reports why it wasn't flagged rather than attempting to fix it.
 - **No unified multi-app launcher.** You still need to run each of the four sibling tools yourself first;
   PatchForeman only merges their *outputs*.
-- **Optional include/exclude per tool** and an **optional "disable the other four" step** exist in the UI,
-  but the merge logic itself has only been checked against real data, not confirmed end-to-end in-game.
+- **Optional include/exclude per tool** and an **optional "disable the other four" step** exist in the UI.
 
 ## Requirements
 
 - Windows, .NET 10 runtime (bundled in the self-contained release zip — no separate install needed)
 - The four sibling tools' output plugins, already generated and active in your load order
-- Mod Organizer 2 (Vortex/direct-install modes aren't wired up yet)
+- Mod Organizer 2, Vortex, or a direct (non-managed) install — all three are supported
 
 For full floating-object collision-awareness in the re-verify pass, this tool bundles a trimmed copy of
 [PyNifly](https://github.com/BadDogSkyrim/PyNifly) (GPL-3.0 — see `pynifly/NOTICE.md`) and needs a Python
@@ -82,6 +86,7 @@ PatchForeman.exe --mo2 <instancePath> <profileName> [gameDataPath]
     [--road-mask-esp="RoadMaskMerge.esp"]
     [--texture-fixer-esp="LandscapeTextureFixes.esp"]
     [--floating-fixer-esp="FloatingObjectFixes.esp"]
+    [--snow-fixer-esp="SnowFixer.esp"]
     [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace="Tamriel"]
 ```
 
@@ -107,3 +112,7 @@ library.
 MIT (see [LICENSE](LICENSE)). The bundled `pynifly/` folder is GPL-3.0 (see `pynifly/LICENSE` and
 `pynifly/NOTICE.md`) — it runs as a separate process invoked via a Python script, never linked into this
 tool's own binary.
+
+## Contributors
+
+See [CONTRIBUTORS.md](CONTRIBUTORS.md).

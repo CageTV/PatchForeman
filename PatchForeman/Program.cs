@@ -10,6 +10,7 @@
 //       [--road-mask-esp="RoadMaskMerge.esp"]
 //       [--texture-fixer-esp="LandscapeTextureFixes.esp"]
 //       [--floating-fixer-esp="FloatingObjectFixes.esp"]
+//       [--snow-fixer-esp="SnowFixer.esp"]
 //       [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace="Tamriel"]
 //
 // Defaults to --dry-run - this is a brand-new, not-yet-in-game-tested tool.
@@ -32,6 +33,7 @@ if (args.Length == 0 || args[0] != "--mo2")
     Console.WriteLine("      [--road-mask-esp=\"RoadMaskMerge.esp\"]");
     Console.WriteLine("      [--texture-fixer-esp=\"LandscapeTextureFixes.esp\"]");
     Console.WriteLine("      [--floating-fixer-esp=\"FloatingObjectFixes.esp\"]");
+    Console.WriteLine("      [--snow-fixer-esp=\"SnowFixer.esp\"]");
     Console.WriteLine("      [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace=\"Tamriel\"]");
     Console.WriteLine("  (defaults to a DRY RUN - logs what would be merged, writes nothing;");
     Console.WriteLine("   pass --write to actually produce the merged plugin and re-verify it)");
@@ -59,7 +61,8 @@ var sources = new SourceToolPlugins(
     LandscapeSeamFixer: StringArg(args, "--seam-fixer-esp=") ?? "LandscapeSeamFixes.esp",
     RoadMaskMerger: StringArg(args, "--road-mask-esp=") ?? "RoadMaskMerge.esp",
     LandscapeTextureFixer: StringArg(args, "--texture-fixer-esp=") ?? "LandscapeTextureFixes.esp",
-    FloatingObjectFixer: StringArg(args, "--floating-fixer-esp=") ?? "FloatingObjectFixes.esp");
+    FloatingObjectFixer: StringArg(args, "--floating-fixer-esp=") ?? "FloatingObjectFixes.esp",
+    SnowFixer: StringArg(args, "--snow-fixer-esp=") ?? "SnowFixer.esp");
 
 Console.WriteLine($"MO2 instance: {instancePath}");
 Console.WriteLine($"Profile: {profileName}");
@@ -67,7 +70,7 @@ Console.WriteLine($"Game Data path: {gameDataPath}");
 Console.WriteLine($"Output plugin: {outputName}");
 Console.WriteLine($"Mode: {(dryRun ? "DRY RUN (pass --write to actually produce output)" : "WRITE")}");
 Console.WriteLine($"Source plugins: SeamFixer={sources.LandscapeSeamFixer}, RoadMask={sources.RoadMaskMerger}, " +
-    $"TextureFixer={sources.LandscapeTextureFixer}, FloatingFixer={sources.FloatingObjectFixer}");
+    $"TextureFixer={sources.LandscapeTextureFixer}, FloatingFixer={sources.FloatingObjectFixer}, SnowFixer={sources.SnowFixer}");
 Console.WriteLine();
 
 try
@@ -88,6 +91,9 @@ try
     Console.WriteLine($"Cells merged across multiple tools: {result.Stats.CellsHeightAndTextureMerged}");
     Console.WriteLine($"Cells where source tools disagreed on Water fields (used the first found): {result.Stats.CellsWaterFieldsDisagreed}");
     Console.WriteLine($"Placed-reference overrides forwarded from Floating Object Fixer: {result.Stats.PlacedRefsForwarded}");
+    Console.WriteLine($"Cells with a Snow Fixer flag applied: {result.Stats.CellsSnowFlagApplied}");
+    Console.WriteLine($"Cells skipped as Snow-Fixer-only (no trusted tool touched them too): {result.Stats.CellsSnowFixerOnlySkipped}");
+    Console.WriteLine($"Base-record (Static/Furniture/MoveableStatic) overrides forwarded from Snow Fixer: {result.Stats.SnowFixerBaseRecordsForwarded}");
     if (!result.DryRun)
         Console.WriteLine($"Output: {result.OutputPath}");
 
@@ -97,6 +103,17 @@ try
         var reverify = ReverifyPass.Run(
             resolved.LoadOrder, result.OutputPath, resolved.ResolveDataFile, Console.WriteLine,
             trustNorthernRoads, floatingThreshold, floatingWorldspace);
+
+        // Same File.WriteAllLines-to-AppContext.BaseDirectory convention every
+        // sibling tool's own CLI already uses for its *Report.csv - these are
+        // the AFTER-merge (PatchForeman winning) detector results, so they
+        // reflect what the world actually looks like once this plugin is
+        // installed, not the pre-merge baseline (which is what re-running the
+        // sibling tools' own CLIs against the load order without PatchForeman
+        // would already give you).
+        WriteReport(reverify.HeightSeamReportCsvLines, "PatchForeman_HeightSeamReport.csv");
+        WriteReport(reverify.TextureMismatchReportCsvLines, "PatchForeman_TextureMismatchReport.csv");
+        WriteReport(reverify.FloatingObjectReportCsvLines, "PatchForeman_FloatingObjectReport.csv");
     }
     else if (result.DryRun && !skipReverify)
     {
@@ -123,6 +140,13 @@ static void Pause()
     Console.WriteLine();
     Console.WriteLine("Press any key to exit...");
     try { Console.ReadKey(); } catch (InvalidOperationException) { }
+}
+
+static void WriteReport(List<string> lines, string fileName)
+{
+    var outPath = Path.Combine(AppContext.BaseDirectory, fileName);
+    File.WriteAllLines(outPath, lines);
+    Console.WriteLine($"Report written to: {outPath}");
 }
 
 static string ReadGamePathFromIni(string instancePath)

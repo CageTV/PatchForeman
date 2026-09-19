@@ -5,14 +5,13 @@
     <ProjectReference Include="..\PatchForeman\PatchForeman.csproj" />
   </ItemGroup>
 
-  <!-- Bundled alongside the exe so the re-verify pass's floating-object
-       collision-awareness works standalone on any machine this is
-       downloaded to - CollisionRaycaster resolves this relative to
-       AppContext.BaseDirectory, never a hardcoded dev path. Without these,
-       the re-verify pass still runs, just falling back to heightmap-only
-       floating-object detection (a graceful degradation, not a crash). -->
+  <!-- Bundled so the re-verify pass's floating-object detection (which calls
+       into FloatingObjectFixer.cs's own CollisionRaycaster path) gets full
+       collision-awareness out of the box, matching FloatingObjectFixer.UI's
+       own bundling - without these, the re-verify pass still runs, just
+       falling back to heightmap-only floating-object detection. -->
   <ItemGroup>
-    <Content Include="..\collision-raycast\extract_collision.py">
+    <Content Include="E:\Tabula Rasa\mods\Skyrim-Claude Code Modder's Toolkit\tools\collision-raycast\extract_collision.py">
       <Link>collision-raycast\extract_collision.py</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -32,9 +31,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>0.1.3</Version>
-    <AssemblyVersion>0.1.3.0</AssemblyVersion>
-    <FileVersion>0.1.3.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
   </PropertyGroup>
 
 </Project>

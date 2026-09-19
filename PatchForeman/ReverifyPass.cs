@@ -30,7 +30,18 @@ namespace PatchForeman;
 public record ReverifySummary(
     int HeightSeamsBefore, int HeightSeamsAfter,
     int TextureMismatchesBefore, int TextureMismatchesAfter,
-    int FloatingObjectsFlaggedBefore, int FloatingObjectsFlaggedAfter);
+    int FloatingObjectsFlaggedBefore, int FloatingObjectsFlaggedAfter,
+    // The AFTER-merge CSV lines (PatchForeman appended as highest priority) -
+    // i.e. the residual state once the merged plugin is actually winning,
+    // same report shape each sibling tool's own CLI already writes to its own
+    // *Report.csv. Exposed here (not just used internally for LogNewRows) so
+    // Program.cs can write them out the same way the 3 sibling tools do -
+    // this pass already computes them, so withholding them just because
+    // MergeEngine.cs itself doesn't need them would silently make PatchForeman
+    // the only one of the 5 tools with no CSV output.
+    List<string> HeightSeamReportCsvLines,
+    List<string> TextureMismatchReportCsvLines,
+    List<string> FloatingObjectReportCsvLines);
 
 public static class ReverifyPass
 {
@@ -63,7 +74,8 @@ public static class ReverifyPass
         var summary = new ReverifySummary(
             baselineHeight.SeamCount, afterHeight.SeamCount,
             baselineTexture.MismatchCount, afterTexture.MismatchCount,
-            baselineFloating.Flagged, afterFloating.Flagged);
+            baselineFloating.Flagged, afterFloating.Flagged,
+            afterHeight.ReportCsvLines, afterTexture.ReportCsvLines, afterFloating.ReportCsvLines);
 
         log("");
         log("=== Re-verify summary ===");

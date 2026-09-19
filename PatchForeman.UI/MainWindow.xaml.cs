@@ -3,6 +3,9 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using Mutagen.Bethesda;
+using Mutagen.Bethesda.Environments;
+using Mutagen.Bethesda.Skyrim;
 using PatchForeman;
 using SeamFinder.Core;
 
@@ -36,9 +39,10 @@ public partial class MainWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PatchForeman", "settings.json");
 
     record PersistedSettings(
-        string Mo2InstancePath, string Mo2GameDataPath, string OutputFolder,
-        string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp,
-        bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer,
+        bool IsMo2Mode, bool IsVortexMode,
+        string Mo2InstancePath, string Mo2GameDataPath, string VortexGameDataPath, string DirectGameDataPath, string OutputFolder,
+        string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
+        bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
         bool DisableOtherFourAfterMerge);
 
@@ -50,12 +54,25 @@ public partial class MainWindow : Window
             var s = System.Text.Json.JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(SettingsFilePath));
             if (s is null) return;
 
+            (ModeMo2.IsChecked, ModeVortex.IsChecked, ModeDirect.IsChecked) = s switch
+            {
+                { IsMo2Mode: true } => (true, false, false),
+                { IsVortexMode: true } => (false, true, false),
+                // A settings.json saved before mode existed (MO2-only era)
+                // has neither flag set - default to MO2, not Direct, so an
+                // upgrading user's app opens exactly where they left it.
+                _ when string.IsNullOrEmpty(s.VortexGameDataPath) && string.IsNullOrEmpty(s.DirectGameDataPath) => (true, false, false),
+                _ => (false, false, true),
+            };
             Mo2InstancePathBox.Text = s.Mo2InstancePath;
             Mo2GameDataPathBox.Text = s.Mo2GameDataPath;
+            VortexGameDataPathBox.Text = s.VortexGameDataPath;
+            DirectGameDataPathBox.Text = s.DirectGameDataPath;
             if (!string.IsNullOrEmpty(s.SeamFixerEsp)) SeamFixerEspBox.Text = s.SeamFixerEsp;
             if (!string.IsNullOrEmpty(s.RoadMaskEsp)) RoadMaskEspBox.Text = s.RoadMaskEsp;
             if (!string.IsNullOrEmpty(s.TextureFixerEsp)) TextureFixerEspBox.Text = s.TextureFixerEsp;
             if (!string.IsNullOrEmpty(s.FloatingFixerEsp)) FloatingFixerEspBox.Text = s.FloatingFixerEsp;
+            if (!string.IsNullOrEmpty(s.SnowFixerEsp)) SnowFixerEspBox.Text = s.SnowFixerEsp;
             // Default true (include) for a first-ever run / a settings file
             // saved before these checkboxes existed - JSON deserialization
             // leaves a missing bool at its type default (false), which would
@@ -68,10 +85,18 @@ public partial class MainWindow : Window
             // covers someone upgrading from a settings.json saved before
             // these fields existed, since a JSON object missing a property
             // entirely deserializes it to false, not the record's own default).
-            IncludeSeamFixerCheck.IsChecked = s.IncludeSeamFixer || IsLegacySettingsFile(s);
-            IncludeRoadMaskCheck.IsChecked = s.IncludeRoadMask || IsLegacySettingsFile(s);
-            IncludeTextureFixerCheck.IsChecked = s.IncludeTextureFixer || IsLegacySettingsFile(s);
-            IncludeFloatingFixerCheck.IsChecked = s.IncludeFloatingFixer || IsLegacySettingsFile(s);
+            var legacy = IsLegacySettingsFile(s);
+            IncludeSeamFixerCheck.IsChecked = s.IncludeSeamFixer || legacy;
+            IncludeRoadMaskCheck.IsChecked = s.IncludeRoadMask || legacy;
+            IncludeTextureFixerCheck.IsChecked = s.IncludeTextureFixer || legacy;
+            IncludeFloatingFixerCheck.IsChecked = s.IncludeFloatingFixer || legacy;
+            // Snow Fixer's own checkbox is exempt from the legacy-file
+            // all-true fallback: a settings.json saved before this checkbox
+            // existed should NOT silently opt a returning user into a
+            // third-party tool's contribution they never asked for - only a
+            // genuinely persisted true (from a settings.json that already
+            // has this field) turns it on.
+            IncludeSnowFixerCheck.IsChecked = s.IncludeSnowFixer;
             TrustNorthernRoadsCheck.IsChecked = s.TrustNorthernRoads;
             if (!string.IsNullOrEmpty(s.FloatingThreshold)) FloatingThresholdBox.Text = s.FloatingThreshold;
             if (!string.IsNullOrEmpty(s.FloatingWorldspace)) FloatingWorldspaceBox.Text = s.FloatingWorldspace;
@@ -89,6 +114,8 @@ public partial class MainWindow : Window
     // way to tell "explicitly unchecked" apart from "field didn't exist yet" -
     // both deserialize IncludeXxx to false. Detect that case via the raw JSON
     // rather than silently starting a returning user with every tool excluded.
+    // Deliberately checks only the original 4 - see IncludeSnowFixerCheck's
+    // own comment above for why its checkbox is excluded from this fallback.
     static bool IsLegacySettingsFile(PersistedSettings s) =>
         !s.IncludeSeamFixer && !s.IncludeRoadMask && !s.IncludeTextureFixer && !s.IncludeFloatingFixer;
 
@@ -97,9 +124,10 @@ public partial class MainWindow : Window
         try
         {
             var persisted = new PersistedSettings(
-                s.Mo2InstancePath, s.Mo2GameDataPath, OutputFolderBox.Text.Trim(),
-                SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(),
-                s.IncludeSeamFixer, s.IncludeRoadMask, s.IncludeTextureFixer, s.IncludeFloatingFixer,
+                s.IsMo2Mode, s.IsVortexMode,
+                s.Mo2InstancePath, s.Mo2GameDataPath, s.VortexGameDataPath, s.DirectGameDataPath, OutputFolderBox.Text.Trim(),
+                SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(), SnowFixerEspBox.Text.Trim(),
+                s.IncludeSeamFixer, s.IncludeRoadMask, s.IncludeTextureFixer, s.IncludeFloatingFixer, s.IncludeSnowFixer,
                 s.TrustNorthernRoads, s.FloatingThreshold, s.FloatingWorldspace, s.SkipReverify, s.DisableOtherFourAfterMerge);
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
             File.WriteAllText(SettingsFilePath, System.Text.Json.JsonSerializer.Serialize(persisted, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
@@ -138,14 +166,18 @@ public partial class MainWindow : Window
         // Each checkbox's IsChecked="True" in XAML fires this handler DURING
         // InitializeComponent, one checkbox at a time, before its own sibling
         // esp TextBox (or any later checkbox's TextBox) has been constructed
-        // yet - so every one of the 4 fields below must be null-checked, not
+        // yet - so every one of the 5 fields below must be null-checked, not
         // just the first, or a later checkbox's Checked event NREs on a
-        // still-unbuilt TextBox further down the XAML document.
-        if (SeamFixerEspBox is null || RoadMaskEspBox is null || TextureFixerEspBox is null || FloatingFixerEspBox is null) return;
+        // still-unbuilt TextBox further down the XAML document. (Confirmed
+        // real regression class - see this project's own 2026-09-14 startup
+        // NRE fix for the original 4; SnowFixerEspBox must be included here
+        // too, not just added to the enable/disable lines below.)
+        if (SeamFixerEspBox is null || RoadMaskEspBox is null || TextureFixerEspBox is null || FloatingFixerEspBox is null || SnowFixerEspBox is null) return;
         SeamFixerEspBox.IsEnabled = IncludeSeamFixerCheck.IsChecked == true;
         RoadMaskEspBox.IsEnabled = IncludeRoadMaskCheck.IsChecked == true;
         TextureFixerEspBox.IsEnabled = IncludeTextureFixerCheck.IsChecked == true;
         FloatingFixerEspBox.IsEnabled = IncludeFloatingFixerCheck.IsChecked == true;
+        SnowFixerEspBox.IsEnabled = IncludeSnowFixerCheck.IsChecked == true;
     }
 
     // --- Sibling tools' own settings.json (read-only sanity check) ---
@@ -175,7 +207,21 @@ public partial class MainWindow : Window
         }
     }
 
-    // --- Output folder: smart default, stays editable ---
+    // --- Mode switching ---
+
+    void Mode_Checked(object sender, RoutedEventArgs e)
+    {
+        if (Mo2Panel is null) return;
+
+        Mo2Panel.Visibility = ModeMo2.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        VortexPanel.Visibility = ModeVortex.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        DirectPanel.Visibility = ModeDirect.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        RefreshOutputFolderDefault();
+    }
+
+    // --- Output folder: smart per-mode default, stays editable ---
+
+    void ModeDataPathBox_TextChanged(object sender, TextChangedEventArgs e) => RefreshOutputFolderDefault();
 
     void OutputFolderBox_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -187,13 +233,30 @@ public partial class MainWindow : Window
     {
         if (OutputFolderBox is null) return;
 
-        var instancePath = Mo2InstancePathBox?.Text.Trim();
         string? defaultPath = null;
-        if (!string.IsNullOrEmpty(instancePath))
-            defaultPath = Path.Combine(instancePath, "mods", "Patch Foreman");
+        string hint = "";
 
-        OutputHintText.Text = "Writes into your MO2 instance's mods folder, so it shows up as an " +
-            "installable mod (a meta.ini is added automatically). You can change this to any folder you like.";
+        if (ModeMo2?.IsChecked == true)
+        {
+            var instancePath = Mo2InstancePathBox?.Text.Trim();
+            if (!string.IsNullOrEmpty(instancePath))
+            {
+                defaultPath = Path.Combine(instancePath, "mods", "Patch Foreman");
+                hint = "Writes into your MO2 instance's mods folder, so it shows up as an installable mod (a meta.ini is added automatically).";
+            }
+        }
+        else if (ModeVortex?.IsChecked == true)
+        {
+            defaultPath = VortexGameDataPathBox?.Text.Trim();
+            hint = "Writes directly into your game's Data folder, matching where Vortex deploys mods by default.";
+        }
+        else if (ModeDirect?.IsChecked == true)
+        {
+            defaultPath = DirectGameDataPathBox?.Text.Trim();
+            hint = "Writes directly into your game's Data folder.";
+        }
+
+        OutputHintText.Text = hint + " You can change this to any folder you like.";
 
         if (_outputFolderAutoSet && !string.IsNullOrEmpty(defaultPath))
         {
@@ -282,6 +345,40 @@ public partial class MainWindow : Window
         return null;
     }
 
+    // --- Vortex panel ---
+
+    void VortexBrowseGameData_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog { Title = "Select the game's Data folder" };
+        if (dlg.ShowDialog() == true)
+            VortexGameDataPathBox.Text = dlg.FolderName;
+    }
+
+    void VortexAutoDetect_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            using var env = GameEnvironment.Typical.Construct<ISkyrimMod, ISkyrimModGetter>(GameRelease.SkyrimSE);
+            VortexGameDataPathBox.Text = env.DataFolderPath.Path;
+            AppendLog($"Auto-detected game Data folder: {env.DataFolderPath.Path}");
+        }
+        catch (Exception ex)
+        {
+            AppendLog("Auto-detect failed: " + ex.Message);
+            MessageBox.Show(this, "Could not auto-detect your game install. Please browse to your Data folder manually.",
+                "Auto-detect failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // --- Direct panel ---
+
+    void DirectBrowseGameData_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog { Title = "Select the game's Data folder" };
+        if (dlg.ShowDialog() == true)
+            DirectGameDataPathBox.Text = dlg.FolderName;
+    }
+
     // --- Output ---
 
     void OutputBrowse_Click(object sender, RoutedEventArgs e)
@@ -294,9 +391,10 @@ public partial class MainWindow : Window
     // --- Run ---
 
     record RunSettings(
-        string Mo2InstancePath, string Mo2GameDataPath,
-        string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp,
-        bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer,
+        bool IsMo2Mode, bool IsVortexMode,
+        string Mo2InstancePath, string Mo2GameDataPath, string VortexGameDataPath, string DirectGameDataPath,
+        string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
+        bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
         bool DisableOtherFourAfterMerge);
 
@@ -308,10 +406,11 @@ public partial class MainWindow : Window
     }
 
     RunSettings SnapshotSettings() => new(
-        Mo2InstancePathBox.Text.Trim(), Mo2GameDataPathBox.Text.Trim(),
-        SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(),
+        ModeMo2.IsChecked == true, ModeVortex.IsChecked == true,
+        Mo2InstancePathBox.Text.Trim(), Mo2GameDataPathBox.Text.Trim(), VortexGameDataPathBox.Text.Trim(), DirectGameDataPathBox.Text.Trim(),
+        SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(), SnowFixerEspBox.Text.Trim(),
         IncludeSeamFixerCheck.IsChecked == true, IncludeRoadMaskCheck.IsChecked == true,
-        IncludeTextureFixerCheck.IsChecked == true, IncludeFloatingFixerCheck.IsChecked == true,
+        IncludeTextureFixerCheck.IsChecked == true, IncludeFloatingFixerCheck.IsChecked == true, IncludeSnowFixerCheck.IsChecked == true,
         TrustNorthernRoadsCheck.IsChecked == true, FloatingThresholdBox.Text.Trim(), FloatingWorldspaceBox.Text.Trim(),
         SkipReverifyCheck.IsChecked == true, DisableOtherFourCheck.IsChecked == true);
 
@@ -334,33 +433,49 @@ public partial class MainWindow : Window
 
         try
         {
-            if (string.IsNullOrEmpty(settings.Mo2InstancePath) || string.IsNullOrEmpty(settings.Mo2GameDataPath))
-            {
-                ShowValidation("Please fill in the MO2 instance folder and game Data folder.");
-                return;
-            }
             if (string.IsNullOrEmpty(outputFolder))
             {
                 ShowValidation("Please choose an output folder.");
                 return;
             }
-            var profile = Mo2ProfileCombo.SelectedItem as string;
-            if (string.IsNullOrEmpty(profile))
+
+            string? profile = null;
+            if (settings.IsMo2Mode)
             {
-                ShowValidation("Please select an MO2 profile.");
-                return;
+                if (string.IsNullOrEmpty(settings.Mo2InstancePath) || string.IsNullOrEmpty(settings.Mo2GameDataPath))
+                {
+                    ShowValidation("Please fill in the MO2 instance folder and game Data folder.");
+                    return;
+                }
+                profile = Mo2ProfileCombo.SelectedItem as string;
+                if (string.IsNullOrEmpty(profile))
+                {
+                    ShowValidation("Please select an MO2 profile.");
+                    return;
+                }
+            }
+            else
+            {
+                var dataFolder = settings.IsVortexMode ? settings.VortexGameDataPath : settings.DirectGameDataPath;
+                if (string.IsNullOrEmpty(dataFolder))
+                {
+                    ShowValidation("Please fill in the game Data folder.");
+                    return;
+                }
             }
             var threshold = float.TryParse(settings.FloatingThreshold, out var t) ? t : 96f;
 
             var (result, reverify) = await Task.Run(() => RunPipeline(settings, profile, outputFolder, write, threshold));
             if (result is null) return;
 
-            if (write) Dispatcher.Invoke(() => EnsureMo2MetaIni(outputFolder));
+            if (write && settings.IsMo2Mode) Dispatcher.Invoke(() => EnsureMo2MetaIni(outputFolder));
 
             _lastOutputPath = result.OutputPath;
             _lastOutputFolder = outputFolder;
             var resultMsg = $"{(write ? "Generated" : "[DRY RUN] Would generate")}: {result.Stats.CellsFromOneSource} cell(s) from a single source tool, " +
-                $"{result.Stats.CellsHeightAndTextureMerged} merged across tools, {result.Stats.PlacedRefsForwarded} placed-reference override(s) from Floating Object Fixer.";
+                $"{result.Stats.CellsHeightAndTextureMerged} merged across tools ({result.Stats.CellsSnowFlagApplied} with a Snow Fixer flag applied), " +
+                $"{result.Stats.PlacedRefsForwarded} placed-reference override(s) from Floating Object Fixer, " +
+                $"{result.Stats.SnowFixerBaseRecordsForwarded} base-record override(s) from Snow Fixer.";
             if (reverify is not null)
             {
                 resultMsg += $" Re-verify: height seams {reverify.HeightSeamsBefore}->{reverify.HeightSeamsAfter}, " +
@@ -376,8 +491,10 @@ public partial class MainWindow : Window
             OpenPluginButton.IsEnabled = write && !string.IsNullOrEmpty(result.OutputPath);
             OpenFolderButton.IsEnabled = true;
 
-            if (write && settings.DisableOtherFourAfterMerge)
-                DisableMergedSourceTools(settings, profile);
+            // plugins.txt editing only makes sense in MO2 mode - Vortex/Direct
+            // have no such file for this tool to touch.
+            if (write && settings.IsMo2Mode && settings.DisableOtherFourAfterMerge)
+                DisableMergedSourceTools(settings, profile!);
         }
         catch (Exception ex)
         {
@@ -401,11 +518,12 @@ public partial class MainWindow : Window
         if (s.IncludeRoadMask && !string.IsNullOrWhiteSpace(s.RoadMaskEsp)) toDisable.Add(s.RoadMaskEsp);
         if (s.IncludeTextureFixer && !string.IsNullOrWhiteSpace(s.TextureFixerEsp)) toDisable.Add(s.TextureFixerEsp);
         if (s.IncludeFloatingFixer && !string.IsNullOrWhiteSpace(s.FloatingFixerEsp)) toDisable.Add(s.FloatingFixerEsp);
+        if (s.IncludeSnowFixer && !string.IsNullOrWhiteSpace(s.SnowFixerEsp)) toDisable.Add(s.SnowFixerEsp);
         if (toDisable.Count == 0) return;
 
         var confirm = MessageBox.Show(this,
             "PatchForeman merged the following into a single patch:\n\n  " + string.Join("\n  ", toDisable) +
-            "\n\nDisable these 4 plugins in this MO2 profile's plugins.txt now?\n" +
+            $"\n\nDisable {(toDisable.Count == 1 ? "this plugin" : $"these {toDisable.Count} plugins")} in this MO2 profile's plugins.txt now?\n" +
             "A timestamped backup of plugins.txt is made first, and only plugins currently checked are touched.",
             "Disable merged source plugins?", MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (confirm != MessageBoxResult.Yes) return;
@@ -427,24 +545,13 @@ public partial class MainWindow : Window
         }
     }
 
-    (MergeResult? Result, ReverifySummary? Reverify) RunPipeline(RunSettings s, string profile, string outputFolder, bool write, float floatingThreshold)
+    (MergeResult? Result, ReverifySummary? Reverify) RunPipeline(RunSettings s, string? profile, string outputFolder, bool write, float floatingThreshold)
     {
         void Log(string line) => Dispatcher.Invoke(() => AppendLog(line));
         const string pluginName = "PatchForeman.esp";
 
-        Log($"MO2 instance: {s.Mo2InstancePath}");
-        Log($"Profile: {profile}");
-        Log($"Game Data path: {s.Mo2GameDataPath}");
         Log($"Mode: {(write ? "WRITE" : "DRY RUN")}");
         Log("");
-
-        var resolved = Mo2Resolver.Resolve(s.Mo2InstancePath, profile, s.Mo2GameDataPath);
-        Log($"Resolved {resolved.LoadOrder.Count} active plugins to real files.");
-        if (resolved.MissingPlugins.Count > 0)
-        {
-            Log($"WARNING: {resolved.MissingPlugins.Count} active plugins could not be found:");
-            foreach (var m in resolved.MissingPlugins) Log("  " + m);
-        }
 
         // An unchecked tool is excluded by passing an empty esp name -
         // MergeEngine's own "is this plugin present in the load order" check
@@ -454,20 +561,87 @@ public partial class MainWindow : Window
             s.IncludeSeamFixer ? s.SeamFixerEsp : "",
             s.IncludeRoadMask ? s.RoadMaskEsp : "",
             s.IncludeTextureFixer ? s.TextureFixerEsp : "",
-            s.IncludeFloatingFixer ? s.FloatingFixerEsp : "");
+            s.IncludeFloatingFixer ? s.FloatingFixerEsp : "",
+            s.IncludeSnowFixer ? s.SnowFixerEsp : "");
         if (!s.IncludeSeamFixer) Log("Landscape Seam Fixer excluded from this merge (unchecked).");
         if (!s.IncludeRoadMask) Log("Road Mask Merger excluded from this merge (unchecked).");
         if (!s.IncludeTextureFixer) Log("Landscape Texture Fixer excluded from this merge (unchecked).");
         if (!s.IncludeFloatingFixer) Log("Floating Object Fixer excluded from this merge (unchecked).");
-        var result = MergeEngine.RunForResolvedPlugins(resolved.LoadOrder, sources, pluginName, outputFolder, Log, dryRun: !write);
+        if (!s.IncludeSnowFixer) Log("Snow Fixer excluded from this merge (unchecked).");
+
+        MergeResult result;
+        List<Mo2Resolver.ResolvedPlugin> loadOrderForReverify;
+        Func<string, string?> resolveDataFile;
+
+        if (s.IsMo2Mode)
+        {
+            Log($"MO2 instance: {s.Mo2InstancePath}");
+            Log($"Profile: {profile}");
+            Log($"Game Data path: {s.Mo2GameDataPath}");
+            Log("");
+
+            var resolved = Mo2Resolver.Resolve(s.Mo2InstancePath, profile!, s.Mo2GameDataPath);
+            Log($"Resolved {resolved.LoadOrder.Count} active plugins to real files.");
+            if (resolved.MissingPlugins.Count > 0)
+            {
+                Log($"WARNING: {resolved.MissingPlugins.Count} active plugins could not be found:");
+                foreach (var m in resolved.MissingPlugins) Log("  " + m);
+            }
+
+            result = MergeEngine.RunForResolvedPlugins(resolved.LoadOrder, sources, pluginName, outputFolder, Log, dryRun: !write);
+            loadOrderForReverify = resolved.LoadOrder;
+            resolveDataFile = resolved.ResolveDataFile;
+        }
+        else
+        {
+            // Vortex/Direct: both already sit physically merged in ONE Data
+            // folder (Vortex via hardlinks/reparse points, Direct by hand),
+            // and the game's own plugins.txt is the real active order -
+            // mirrors every sibling tool's own RunForDirectDataFolder shape.
+            var dataFolder = s.IsVortexMode ? s.VortexGameDataPath : s.DirectGameDataPath;
+            Log($"Game Data path: {dataFolder}");
+            Log("");
+
+            result = MergeEngine.RunForDirectDataFolder(dataFolder, sources, pluginName, outputFolder, Log, dryRun: !write);
+
+            // ReverifyPass needs the same Mo2Resolver.ResolvedPlugin shape
+            // MergeEngine.RunForDirectDataFolder builds internally for its
+            // own use - rebuilt here rather than having MergeEngine expose
+            // its internal env, since this is the only other caller that
+            // needs it and the load order is cheap to resolve a second time.
+            using var env = Mutagen.Bethesda.Environments.GameEnvironmentBuilder<ISkyrimMod, ISkyrimModGetter>
+                .Create(GameRelease.SkyrimSE)
+                .WithTargetDataFolder(dataFolder)
+                .Build();
+            loadOrderForReverify = env.LoadOrder.ListedOrder
+                .Select(listing => new Mo2Resolver.ResolvedPlugin(listing.ModKey.FileName, Path.Combine(dataFolder, listing.ModKey.FileName)))
+                .ToList();
+            // No per-mod virtual filesystem in Vortex/Direct mode - everything
+            // already sits flat in dataFolder, so resolving an arbitrary asset
+            // path (for CollisionRaycaster's floating-object detection) is
+            // just a direct existence check, not a priority-ordered search.
+            resolveDataFile = relativePath =>
+            {
+                var candidate = Path.Combine(dataFolder, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                return File.Exists(candidate) ? candidate : null;
+            };
+        }
 
         ReverifySummary? reverify = null;
         if (write && !s.SkipReverify)
         {
             Log("");
             reverify = ReverifyPass.Run(
-                resolved.LoadOrder, result.OutputPath, resolved.ResolveDataFile, Log,
+                loadOrderForReverify, result.OutputPath, resolveDataFile, Log,
                 s.TrustNorthernRoads, floatingThreshold, s.FloatingWorldspace);
+
+            // Same outputFolder-not-AppContext.BaseDirectory convention every
+            // sibling tool's own UI already uses (e.g. FloatingObjectFixer.UI)
+            // - the CSV lands next to the merged plugin itself, not buried in
+            // this app's install folder.
+            WriteReport(reverify.HeightSeamReportCsvLines, outputFolder, "PatchForeman_HeightSeamReport.csv");
+            WriteReport(reverify.TextureMismatchReportCsvLines, outputFolder, "PatchForeman_TextureMismatchReport.csv");
+            WriteReport(reverify.FloatingObjectReportCsvLines, outputFolder, "PatchForeman_FloatingObjectReport.csv");
         }
 
         return (result, reverify);
@@ -476,6 +650,17 @@ public partial class MainWindow : Window
     void ShowValidation(string message)
     {
         Dispatcher.Invoke(() => MessageBox.Show(this, message, "Missing information", MessageBoxButton.OK, MessageBoxImage.Warning));
+    }
+
+    void WriteReport(List<string> lines, string outputFolder, string fileName)
+    {
+        var outPath = Path.Combine(outputFolder, fileName);
+        File.WriteAllLines(outPath, lines);
+        // RunPipeline (this method's only caller) runs off the UI thread, same
+        // as its own local Log() wrapper - AppendLog touches LogBox directly,
+        // so it needs the same Dispatcher.Invoke marshal or it cross-thread-
+        // exceptions instead of just failing to log.
+        Dispatcher.Invoke(() => AppendLog($"Report written to: {outPath}"));
     }
 
     void EnsureMo2MetaIni(string outputFolder)

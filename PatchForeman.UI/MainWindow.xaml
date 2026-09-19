@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PatchForeman.UI"
         mc:Ignorable="d"
-        Title="Patch Foreman" Height="820" Width="860" MinHeight="680" MinWidth="760">
+        Title="Patch Foreman" Height="920" Width="860" MinHeight="760" MinWidth="760">
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -20,18 +20,23 @@
             <Setter Property="Padding" Value="10,4"/>
             <Setter Property="Margin" Value="0,3,0,3"/>
         </Style>
+        <Style TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,20,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- 0: prototype banner -->
-            <RowDefinition Height="Auto"/>   <!-- 1: MO2 settings -->
-            <RowDefinition Height="Auto"/>   <!-- 2: output -->
-            <RowDefinition Height="Auto"/>   <!-- 3: source plugins -->
-            <RowDefinition Height="Auto"/>   <!-- 4: options -->
-            <RowDefinition Height="Auto"/>   <!-- 5: run row -->
-            <RowDefinition Height="*"/>      <!-- 6: log -->
-            <RowDefinition Height="Auto"/>   <!-- 7: result bar -->
+            <RowDefinition Height="Auto"/>   <!-- 1: mode selector -->
+            <RowDefinition Height="Auto"/>   <!-- 2: mode-specific panel -->
+            <RowDefinition Height="Auto"/>   <!-- 3: output -->
+            <RowDefinition Height="Auto"/>   <!-- 4: source plugins -->
+            <RowDefinition Height="Auto"/>   <!-- 5: options -->
+            <RowDefinition Height="Auto"/>   <!-- 6: run row -->
+            <RowDefinition Height="*"/>      <!-- 7: log -->
+            <RowDefinition Height="Auto"/>   <!-- 8: result bar -->
         </Grid.RowDefinitions>
 
         <!-- Prototype banner - this is a genuinely new tool with zero in-game
@@ -40,43 +45,86 @@
              other tool in this family started with. -->
         <Border Grid.Row="0" Background="#FF4A3B00" BorderBrush="#FFC9A200" BorderThickness="1" Padding="8" Margin="0,0,0,10">
             <TextBlock Foreground="#FFFFD966" TextWrapping="Wrap" Margin="0">
-                PROTOTYPE - built 2026-09-14, not yet tested in-game. Review the log (especially any
+                Not yet tested in-game. Review the log (especially any
                 "REGRESSION" lines from the re-verify pass) before installing the generated plugin.
                 Merges Landscape Seam Fixer + Road Mask Merger + Landscape Texture Fixer + Floating
-                Object Fixer's output plugins together - run those 4 tools first.
+                Object Fixer + Snow Fixer's output plugins together - run those tools first.
             </TextBlock>
         </Border>
 
-        <!-- MO2 settings (MO2-only for now, matching how every sibling tool started) -->
-        <GroupBox Grid.Row="1" Header="Mod Organizer 2 settings" Margin="0,0,0,10">
-            <Grid Margin="6">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="MO2 instance folder:"/>
-                <TextBox Grid.Row="0" Grid.Column="1" x:Name="Mo2InstancePathBox" TextChanged="Mo2InstancePathBox_TextChanged"/>
-                <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Click="Mo2BrowseInstance_Click"/>
-
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Profile:"/>
-                <ComboBox Grid.Row="1" Grid.Column="1" x:Name="Mo2ProfileCombo"/>
-                <TextBlock Grid.Row="1" Grid.Column="2" Text="(auto-listed from instance)" Foreground="Gray" FontSize="11"/>
-
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Game Data folder:"/>
-                <TextBox Grid.Row="2" Grid.Column="1" x:Name="Mo2GameDataPathBox"/>
-                <Button Grid.Row="2" Grid.Column="2" Content="Browse..." Click="Mo2BrowseGameData_Click"/>
-            </Grid>
+        <!-- Mode selector -->
+        <GroupBox Grid.Row="1" Header="Mod manager" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" Margin="6">
+                <RadioButton x:Name="ModeMo2" Content="Mod Organizer 2" GroupName="Mode" IsChecked="True" Checked="Mode_Checked"/>
+                <RadioButton x:Name="ModeVortex" Content="Vortex" GroupName="Mode" Checked="Mode_Checked"/>
+                <RadioButton x:Name="ModeDirect" Content="Direct game path (no mod manager)" GroupName="Mode" Checked="Mode_Checked"/>
+            </StackPanel>
         </GroupBox>
 
+        <!-- Mode-specific panels -->
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <!-- MO2 panel -->
+            <GroupBox x:Name="Mo2Panel" Header="Mod Organizer 2 settings">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="MO2 instance folder:"/>
+                    <TextBox Grid.Row="0" Grid.Column="1" x:Name="Mo2InstancePathBox" TextChanged="Mo2InstancePathBox_TextChanged"/>
+                    <Button Grid.Row="0" Grid.Column="2" Content="Browse..." Click="Mo2BrowseInstance_Click"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Profile:"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1" x:Name="Mo2ProfileCombo"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="(auto-listed from instance)" Foreground="Gray" FontSize="11"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Game Data folder:"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="Mo2GameDataPathBox"/>
+                    <Button Grid.Row="2" Grid.Column="2" Content="Browse..." Click="Mo2BrowseGameData_Click"/>
+                </Grid>
+            </GroupBox>
+
+            <!-- Vortex panel -->
+            <GroupBox x:Name="VortexPanel" Header="Vortex settings" Visibility="Collapsed">
+                <StackPanel Margin="6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Game Data folder:"/>
+                        <TextBox Grid.Column="1" x:Name="VortexGameDataPathBox" TextChanged="ModeDataPathBox_TextChanged"/>
+                        <Button Grid.Column="2" Content="Browse..." Click="VortexBrowseGameData_Click"/>
+                    </Grid>
+                    <Button Content="Auto-detect from Vortex" HorizontalAlignment="Left" Click="VortexAutoDetect_Click"/>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Direct panel -->
+            <GroupBox x:Name="DirectPanel" Header="Direct game path" Visibility="Collapsed">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Game Data folder:"/>
+                    <TextBox Grid.Column="1" x:Name="DirectGameDataPathBox" TextChanged="ModeDataPathBox_TextChanged"/>
+                    <Button Grid.Column="2" Content="Browse..." Click="DirectBrowseGameData_Click"/>
+                </Grid>
+            </GroupBox>
+        </Grid>
+
         <!-- Output -->
-        <GroupBox Grid.Row="2" Header="Output" Margin="0,0,0,10">
+        <GroupBox Grid.Row="3" Header="Output" Margin="0,0,0,10">
             <StackPanel Margin="6">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -93,7 +141,7 @@
         </GroupBox>
 
         <!-- Source plugins -->
-        <GroupBox Grid.Row="3" Header="Source tool output plugins" Margin="0,0,0,10">
+        <GroupBox Grid.Row="4" Header="Source tool output plugins" Margin="0,0,0,10">
             <StackPanel Margin="6">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -103,6 +151,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
@@ -116,7 +165,17 @@
                     <TextBox Grid.Row="1" Grid.Column="1" x:Name="TextureFixerEspBox" Text="LandscapeTextureFixes.esp"/>
                     <CheckBox Grid.Row="1" Grid.Column="2" x:Name="IncludeFloatingFixerCheck" Content="Floating Object Fixer:" IsChecked="True" Checked="IncludeCheck_Changed" Unchecked="IncludeCheck_Changed" Margin="0,3,8,3"/>
                     <TextBox Grid.Row="1" Grid.Column="3" x:Name="FloatingFixerEspBox" Text="FloatingObjectFixes.esp"/>
+
+                    <CheckBox Grid.Row="2" Grid.Column="0" x:Name="IncludeSnowFixerCheck" Content="Snow Fixer:" IsChecked="True" Checked="IncludeCheck_Changed" Unchecked="IncludeCheck_Changed" Margin="0,3,8,3"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="SnowFixerEspBox" Text="SnowFixer.esp"/>
                 </Grid>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,4,0,0">
+                    Snow Fixer is a third-party tool (not one of this project's own 4) - its only
+                    contribution folded in here is its "considered snow" Flags fix (on Landscape
+                    quadrants and on Static/Furniture/MoveableStatic base records), layered on top of
+                    whatever the other tools above already established for a cell. It's never trusted as
+                    a cell's sole source of Water/Persistent/Temporary data.
+                </TextBlock>
                 <Grid Margin="0,6,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -129,7 +188,7 @@
         </GroupBox>
 
         <!-- Options -->
-        <GroupBox Grid.Row="4" Header="Options" Margin="0,0,0,10">
+        <GroupBox Grid.Row="5" Header="Options" Margin="0,0,0,10">
             <StackPanel Margin="6">
                 <CheckBox x:Name="TrustNorthernRoadsCheck" Content="Trust Northern Roads (affects the re-verify pass's height/texture seam checks)" Margin="0,0,0,6"/>
                 <Grid Margin="0,0,0,6">
@@ -146,19 +205,20 @@
                     <TextBox Grid.Column="4" x:Name="FloatingWorldspaceBox" Text="Tamriel"/>
                 </Grid>
                 <CheckBox x:Name="SkipReverifyCheck" Content="Skip the re-verify pass (faster, but you won't know if the merge introduced any regressions)" Margin="0,0,0,10"/>
-                <CheckBox x:Name="DisableOtherFourCheck" Content="After generating, disable the 4 source tools' plugins in this MO2 profile (unchecks them in plugins.txt - PatchForeman.esp now carries their work forward)"/>
+                <CheckBox x:Name="DisableOtherFourCheck" Content="After generating, disable the source tools' plugins in this MO2 profile (unchecks them in plugins.txt - PatchForeman.esp now carries their work forward)"/>
                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0">
                     Only unchecks plugins that are currently checked - never touches a mod's files or its
-                    checked state in the mods list, and only the 4 boxes above that are both ticked and
-                    actually resolved. plugins.txt is backed up first (timestamped, in the same profile
-                    folder) and MO2 may rewrite this file on its own the next time it runs, same as any
-                    direct edit to a load-order file.
+                    checked state in the mods list, and only the boxes above that are both ticked and
+                    actually resolved (MO2 mode only - Vortex/Direct have no plugins.txt for this to
+                    touch). plugins.txt is backed up first (timestamped, in the same profile folder) and
+                    MO2 may rewrite this file on its own the next time it runs, same as any direct edit
+                    to a load-order file.
                 </TextBlock>
             </StackPanel>
         </GroupBox>
 
         <!-- Run row -->
-        <StackPanel Grid.Row="5" Margin="0,0,0,10">
+        <StackPanel Grid.Row="6" Margin="0,0,0,10">
             <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="0,0,0,6">
                 "Run Detection" reports what WOULD be merged without writing anything. "Generate Merged
                 Plugin" writes the real plugin and then automatically re-runs Landscape Seam Fixer's,
@@ -174,7 +234,7 @@
         </StackPanel>
 
         <!-- Log -->
-        <GroupBox Grid.Row="6" Header="Log">
+        <GroupBox Grid.Row="7" Header="Log">
             <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="NoWrap"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                      FontFamily="Consolas" FontSize="12" Background="#FF1E1E1E" Foreground="#FFDCDCDC"
@@ -182,7 +242,7 @@
         </GroupBox>
 
         <!-- Result bar -->
-        <Grid Grid.Row="7" Margin="0,10,0,0">
+        <Grid Grid.Row="8" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
