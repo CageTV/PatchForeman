@@ -10,9 +10,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.2.3</Version>
-    <AssemblyVersion>0.2.3.0</AssemblyVersion>
-    <FileVersion>0.2.3.0</FileVersion>
+    <!-- .NET 9+ marks the apphost CET shadow-stack compatible by default.
+         MO2's USVFS hooks the process with inline trampolines, which the
+         shadow stack rejects, so the app crashed when launched from MO2's
+         executables list. Synthesis, which runs fine under MO2, ships with
+         this flag off too. -->
+    <CETCompat>false</CETCompat>
+    <Version>0.2.4</Version>
+    <AssemblyVersion>0.2.4.0</AssemblyVersion>
+    <FileVersion>0.2.4.0</FileVersion>
   </PropertyGroup>
 
 </Project>

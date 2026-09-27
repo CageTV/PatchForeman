@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,6 +25,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         LoadPersistedSettings();
         RefreshOutputFolderDefault();
+        FillSnowFixerOutputFolderIfEmpty();
         UpdateEspBoxEnabledStates();
         // Best-effort, non-blocking: auto-check the sibling tools' own
         // settings.json on open, per the user's explicit request ("it should
@@ -44,7 +45,8 @@ public partial class MainWindow : Window
         string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
         bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
-        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false);
+        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false,
+        string SnowFixerOutputFolder = "", bool ImportSnowFixerAssets = true, bool MoveSnowFixerAssets = true);
 
     void LoadPersistedSettings()
     {
@@ -103,6 +105,9 @@ public partial class MainWindow : Window
             SkipReverifyCheck.IsChecked = s.SkipReverify;
             DisableOtherFourCheck.IsChecked = s.DisableOtherFourAfterMerge;
             MatchNeighborsCheck.IsChecked = s.MatchNeighborsToTrustedChain;
+            SnowFixerOutputFolderBox.Text = s.SnowFixerOutputFolder ?? "";
+            ImportSnowFixerAssetsCheck.IsChecked = s.ImportSnowFixerAssets;
+            (SnowFixerMoveRadio.IsChecked, SnowFixerCopyRadio.IsChecked) = (s.MoveSnowFixerAssets, !s.MoveSnowFixerAssets);
             if (!string.IsNullOrEmpty(s.OutputFolder)) OutputFolderBox.Text = s.OutputFolder; // marks _outputFolderAutoSet false via its own TextChanged handler
         }
         catch
@@ -129,7 +134,8 @@ public partial class MainWindow : Window
                 s.Mo2InstancePath, s.Mo2GameDataPath, s.VortexGameDataPath, s.DirectGameDataPath, OutputFolderBox.Text.Trim(),
                 SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(), SnowFixerEspBox.Text.Trim(),
                 s.IncludeSeamFixer, s.IncludeRoadMask, s.IncludeTextureFixer, s.IncludeFloatingFixer, s.IncludeSnowFixer,
-                s.TrustNorthernRoads, s.FloatingThreshold, s.FloatingWorldspace, s.SkipReverify, s.DisableOtherFourAfterMerge, s.MatchNeighborsToTrustedChain);
+                s.TrustNorthernRoads, s.FloatingThreshold, s.FloatingWorldspace, s.SkipReverify, s.DisableOtherFourAfterMerge, s.MatchNeighborsToTrustedChain,
+                s.SnowFixerOutputFolder, s.ImportSnowFixerAssets, s.MoveSnowFixerAssets);
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
             File.WriteAllText(SettingsFilePath, System.Text.Json.JsonSerializer.Serialize(persisted, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         }
@@ -173,12 +179,60 @@ public partial class MainWindow : Window
         // real regression class - see this project's own 2026-09-14 startup
         // NRE fix for the original 4; SnowFixerEspBox must be included here
         // too, not just added to the enable/disable lines below.)
-        if (SeamFixerEspBox is null || RoadMaskEspBox is null || TextureFixerEspBox is null || FloatingFixerEspBox is null || SnowFixerEspBox is null) return;
+        if (SeamFixerEspBox is null || RoadMaskEspBox is null || TextureFixerEspBox is null || FloatingFixerEspBox is null || SnowFixerEspBox is null
+            || ImportSnowFixerAssetsCheck is null || SnowFixerOutputFolderBox is null || SnowFixerOutputBrowseButton is null
+            || SnowFixerMoveRadio is null || SnowFixerCopyRadio is null) return;
         SeamFixerEspBox.IsEnabled = IncludeSeamFixerCheck.IsChecked == true;
         RoadMaskEspBox.IsEnabled = IncludeRoadMaskCheck.IsChecked == true;
         TextureFixerEspBox.IsEnabled = IncludeTextureFixerCheck.IsChecked == true;
         FloatingFixerEspBox.IsEnabled = IncludeFloatingFixerCheck.IsChecked == true;
         SnowFixerEspBox.IsEnabled = IncludeSnowFixerCheck.IsChecked == true;
+
+        ImportSnowFixerAssetsCheck.IsEnabled = IncludeSnowFixerCheck.IsChecked == true;
+        var importOn = IncludeSnowFixerCheck.IsChecked == true && ImportSnowFixerAssetsCheck.IsChecked == true;
+        SnowFixerOutputFolderBox.IsEnabled = importOn;
+        SnowFixerOutputBrowseButton.IsEnabled = importOn;
+        SnowFixerMoveRadio.IsEnabled = importOn;
+        SnowFixerCopyRadio.IsEnabled = importOn;
+    }
+
+    // --- Plugin names: shipped defaults, but editable for renamed plugins ---
+
+    // Each tool's own shipped plugin name - the same values the XAML boxes
+    // start with. Snow Fixer's is the name Cl3mus33's tool writes.
+    void ResetPluginNames_Click(object sender, RoutedEventArgs e)
+    {
+        SeamFixerEspBox.Text = "LandscapeSeamFixes.esp";
+        RoadMaskEspBox.Text = "RoadMaskMerge.esp";
+        TextureFixerEspBox.Text = "LandscapeTextureFixes.esp";
+        FloatingFixerEspBox.Text = "FloatingObjectFixes.esp";
+        SnowFixerEspBox.Text = "SnowFixer.esp";
+        AppendLog("Plugin names reset to each tool's shipped defaults.");
+    }
+
+    // --- Snow Fixer output folder ---
+
+    // Snow Fixer's own last-used output folder first (whatever the user named
+    // it), then the empty "SnowFixer Output" mod its Nexus page ships.
+    void FillSnowFixerOutputFolderIfEmpty()
+    {
+        if (!string.IsNullOrWhiteSpace(SnowFixerOutputFolderBox.Text)) return;
+        var fromSnowFixer = SnowFixerAssetImporter.ReadSnowFixerOutputLocation();
+        if (!string.IsNullOrWhiteSpace(fromSnowFixer))
+        {
+            SnowFixerOutputFolderBox.Text = fromSnowFixer;
+            return;
+        }
+        var instancePath = Mo2InstancePathBox.Text.Trim();
+        if (ModeMo2.IsChecked == true && !string.IsNullOrEmpty(instancePath))
+            SnowFixerOutputFolderBox.Text = Path.Combine(instancePath, "mods", "SnowFixer Output");
+    }
+
+    void SnowFixerOutputBrowse_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFolderDialog { Title = "Select Snow Fixer's output folder" };
+        if (dlg.ShowDialog() == true)
+            SnowFixerOutputFolderBox.Text = dlg.FolderName;
     }
 
     // --- Sibling tools' own settings.json (read-only sanity check) ---
@@ -397,7 +451,8 @@ public partial class MainWindow : Window
         string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
         bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
-        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false);
+        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false,
+        string SnowFixerOutputFolder = "", bool ImportSnowFixerAssets = true, bool MoveSnowFixerAssets = true);
 
     void SetBusy(bool busy)
     {
@@ -413,7 +468,8 @@ public partial class MainWindow : Window
         IncludeSeamFixerCheck.IsChecked == true, IncludeRoadMaskCheck.IsChecked == true,
         IncludeTextureFixerCheck.IsChecked == true, IncludeFloatingFixerCheck.IsChecked == true, IncludeSnowFixerCheck.IsChecked == true,
         TrustNorthernRoadsCheck.IsChecked == true, FloatingThresholdBox.Text.Trim(), FloatingWorldspaceBox.Text.Trim(),
-        SkipReverifyCheck.IsChecked == true, DisableOtherFourCheck.IsChecked == true, MatchNeighborsCheck.IsChecked == true);
+        SkipReverifyCheck.IsChecked == true, DisableOtherFourCheck.IsChecked == true, MatchNeighborsCheck.IsChecked == true,
+        SnowFixerOutputFolderBox.Text.Trim(), ImportSnowFixerAssetsCheck.IsChecked == true, SnowFixerMoveRadio.IsChecked == true);
 
     async void RunButton_Click(object sender, RoutedEventArgs e) => await RunOrGenerate(write: false);
     async void GenerateButton_Click(object sender, RoutedEventArgs e) => await RunOrGenerate(write: true);
@@ -471,6 +527,11 @@ public partial class MainWindow : Window
 
             if (write && settings.IsMo2Mode) Dispatcher.Invoke(() => EnsureMo2MetaIni(outputFolder));
 
+            // After the merge AND the re-verify pass, so the re-verify pass
+            // resolved meshes from the same places the merge saw them.
+            if (write && settings.IncludeSnowFixer && settings.ImportSnowFixerAssets)
+                await Task.Run(() => ImportSnowFixerAssets(settings, outputFolder));
+
             _lastOutputPath = result.OutputPath;
             _lastOutputFolder = outputFolder;
             var resultMsg = $"{(write ? "Generated" : "[DRY RUN] Would generate")}: {result.Stats.CellsFromOneSource} cell(s) from a single source tool, " +
@@ -511,6 +572,26 @@ public partial class MainWindow : Window
         }
     }
 
+    void ImportSnowFixerAssets(RunSettings s, string outputFolder)
+    {
+        void Log(string line) => Dispatcher.Invoke(() => AppendLog(line));
+        Log("");
+        if (string.IsNullOrWhiteSpace(s.SnowFixerOutputFolder))
+        {
+            Log("Snow Fixer assets: no Snow Fixer output folder set - skipped.");
+            return;
+        }
+        try
+        {
+            SnowFixerAssetImporter.Import(s.SnowFixerOutputFolder, outputFolder, "PatchForeman.esp", s.MoveSnowFixerAssets, Log);
+        }
+        catch (Exception ex)
+        {
+            // The merged plugin is already written and fine - report, don't abort.
+            Log("ERROR importing Snow Fixer assets: " + ex.Message);
+        }
+    }
+
     // Only disables the source esps that were actually folded into this
     // merge (checked) - an excluded tool's esp is still doing its own job
     // and PatchForeman hasn't superseded it, so it must stay active.
@@ -524,11 +605,26 @@ public partial class MainWindow : Window
         if (s.IncludeSnowFixer && !string.IsNullOrWhiteSpace(s.SnowFixerEsp)) toDisable.Add(s.SnowFixerEsp);
         if (toDisable.Count == 0) return;
 
+        // MO2 keeps the plugin list in memory. It re-reads plugins.txt from
+        // disk only after a program it launched exits (OrganizerCore::afterRun
+        // -> refreshESPList -> GamePlugins::readPluginLists), and otherwise
+        // writes its own copy back over any outside edit. So the edit only
+        // sticks when PatchForeman runs from MO2, or when MO2 is closed.
+        var underMo2 = Mo2Session.IsRunningUnderMo2();
+        var mo2Open = Mo2Session.IsMo2Open();
+        var note = underMo2
+            ? "MO2 will show them unchecked once you close PatchForeman."
+            : mo2Open
+                ? "WARNING: MO2 is open, but PatchForeman was not launched from it. MO2 will overwrite this change " +
+                  "with its own copy. Close MO2 first, or re-run PatchForeman from MO2's executables list."
+                : "MO2 is closed, so the change will be there when you open it.";
+
         var confirm = MessageBox.Show(this,
             "PatchForeman merged the following into a single patch:\n\n  " + string.Join("\n  ", toDisable) +
             $"\n\nDisable {(toDisable.Count == 1 ? "this plugin" : $"these {toDisable.Count} plugins")} in this MO2 profile's plugins.txt now?\n" +
-            "A timestamped backup of plugins.txt is made first, and only plugins currently checked are touched.",
-            "Disable merged source plugins?", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            "A timestamped backup of plugins.txt is made first, and only plugins currently checked are touched.\n\n" + note,
+            "Disable merged source plugins?", MessageBoxButton.YesNo,
+            !underMo2 && mo2Open ? MessageBoxImage.Warning : MessageBoxImage.Question);
         if (confirm != MessageBoxResult.Yes) return;
 
         try
@@ -540,6 +636,12 @@ public partial class MainWindow : Window
                 AppendLog($"Already unchecked: {string.Join(", ", disableResult.AlreadyUnchecked)}");
             if (disableResult.NotFound.Count > 0)
                 AppendLog($"Not found in plugins.txt: {string.Join(", ", disableResult.NotFound)}");
+            if (disableResult.Disabled.Count > 0)
+                AppendLog(underMo2
+                    ? "Close PatchForeman and MO2 will reload plugins.txt with these unchecked."
+                    : mo2Open
+                        ? "MO2 is open and was not the launcher - it will overwrite this. Close MO2 and re-run, or launch PatchForeman from MO2."
+                        : "Done - MO2 will read this the next time it opens.");
         }
         catch (Exception ex)
         {

@@ -33,7 +33,9 @@ game's 7-layer-per-quadrant cap).
 per-record "considered snow" flag), PatchForeman can fold that in too via `--snow-fixer-esp` /
 the UI's Snow Fixer checkbox. It's treated as additive-only, never as a cell's primary source of
 truth — only its snow changes are applied, onto the terrain your other mods produce. See
-[CHANGELOG.md](CHANGELOG.md) v0.2.3 for exactly what that means.
+[CHANGELOG.md](CHANGELOG.md) v0.2.3 for exactly what that means. Since v0.2.4 the UI also brings Snow
+Fixer's generated assets (meshes, textures, PBRNifPatcher configs) into PatchForeman's output folder —
+moved by default, or copied — so Snow Fixer's output mod has nothing left that needs to stay enabled.
 
 **Since v0.2.3 the merged plugin replaces all five source outputs**, so you can disable them after
 merging and free those plugin slots.
@@ -71,15 +73,20 @@ heightmap-only floating-object detection (a graceful degradation, not a failure)
 
 ## Usage (GUI)
 
-1. Run `PatchForeman.UI.exe`.
+1. Run `PatchForeman.UI.exe` — on MO2, **add it to MO2's executables list and launch it from there**
+   (supported since v0.2.4). That's also what makes the optional "disable the source plugins" step stick:
+   MO2 reloads `plugins.txt` when a program it launched closes, but overwrites outside edits with its
+   own copy if it's open and wasn't the launcher.
 2. Point it at your MO2 instance and profile — it auto-detects the game Data folder and lists your
    profiles.
-3. Confirm (or rename) each of the four sibling tools' own output esp names — untick any tool whose
-   output you don't want folded into the merge.
+3. Confirm each source tool's output plugin name. They default to what each tool ships with; edit them
+   if you renamed a plugin (**Reset names to defaults** puts them back). Untick any tool whose output you
+   don't want folded into the merge.
 4. Click **Run Detection** for a dry run (nothing written), or **Generate Merged Plugin** to actually
    write it and run the re-verify pass.
-5. Review the log, then install `PatchForeman.esp` (and, optionally, disable the four source plugins it
-   superseded — the UI can do this for you, after a confirmation).
+5. Review the log, then install `PatchForeman.esp` (and, optionally, disable the source plugins it
+   superseded — the UI can do this for you, after a confirmation). Close PatchForeman afterwards so MO2
+   picks the change up.
 
 ## Usage (CLI)
 

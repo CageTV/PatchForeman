@@ -1,5 +1,27 @@
 # PatchForeman — Changelog
 
+## v0.2.4 — 2026-09-27
+
+- **Fixed: crash when launched from Mod Organizer 2.** .NET 9+ marks programs as compatible with the CPU's
+  shadow-stack protection (CET) by default, and MO2's virtual filesystem hooks trip it, so the UI died on
+  launch from MO2's executables list before showing a window. Both executables are now built with
+  `CETCompat` off, the same as Synthesis.
+- **Fixed: "disable the source plugins" didn't stick.** It did uncheck them in `plugins.txt`, but when
+  MO2 was open and hadn't launched PatchForeman, MO2 later wrote its own copy back over the change. MO2 only
+  re-reads `plugins.txt` after a program it launched closes. PatchForeman now detects whether MO2 launched
+  it and says so in the confirmation; if MO2 is open but wasn't the launcher, the confirmation warns that
+  the change will be overwritten.
+- **New: Snow Fixer's assets come along.** After generating, PatchForeman can move (default) or copy
+  everything in Snow Fixer's output folder except its plugin and `meta.ini` into PatchForeman's own output
+  folder. The folder is pre-filled from Snow Fixer's own settings and stays editable. A manifest
+  (`PatchForeman_SnowFixerAssets.txt`) records what was brought over, so the next import replaces exactly
+  those files instead of piling up old ones; if Snow Fixer's folder has nothing new, the previous set is
+  kept.
+- **New: Reset names to defaults** button for the source plugin names (they stay editable for renamed
+  plugins).
+- **Fixed: floating-object re-verify could crash when Python is present but PyNifly isn't** (the same fix
+  shipped in Floating Object Fixer v2.0.4).
+
 ## v0.2.3 — 2026-09-27
 
 The goal of this release: `PatchForeman.esp` now carries everything the five source outputs contribute,

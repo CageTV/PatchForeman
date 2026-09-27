@@ -176,13 +176,37 @@
                     whatever the other tools above already established for a cell. It's never trusted as
                     a cell's sole source of Water/Persistent/Temporary data.
                 </TextBlock>
+                <CheckBox x:Name="ImportSnowFixerAssetsCheck" IsChecked="True" Margin="0,8,0,2" Checked="IncludeCheck_Changed" Unchecked="IncludeCheck_Changed"
+                          Content="After generating, bring Snow Fixer's generated assets (meshes, textures, PBRNifPatcher...) into the output folder above"/>
+                <Grid Margin="20,0,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Snow Fixer output folder:"/>
+                    <TextBox Grid.Column="1" x:Name="SnowFixerOutputFolderBox"/>
+                    <Button Grid.Column="2" x:Name="SnowFixerOutputBrowseButton" Content="Browse..." Click="SnowFixerOutputBrowse_Click"/>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="20,2,0,0">
+                    <RadioButton x:Name="SnowFixerMoveRadio" Content="Move (leaves Snow Fixer's folder with only its plugin)" GroupName="SnowAssets" IsChecked="True"/>
+                    <RadioButton x:Name="SnowFixerCopyRadio" Content="Copy" GroupName="SnowAssets"/>
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0">
+                    Everything in that folder is taken except its plugin and meta.ini. Pre-filled from Snow
+                    Fixer's own settings. Files imported last time are replaced, not piled up; if the folder
+                    has nothing new (already moved), the previous set is kept.
+                </TextBlock>
                 <Grid Margin="0,6,0,0">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Button Grid.Column="0" Content="Refresh from sibling tools' own settings" Click="RefreshSiblingSettings_Click"/>
-                    <TextBlock Grid.Column="1" x:Name="SiblingSettingsStatusText" Foreground="Gray" FontSize="11" Margin="8,0,0,0" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Content="Reset names to defaults" Margin="8,3,0,3" Click="ResetPluginNames_Click"
+                            ToolTip="Puts every plugin name back to what each tool ships with"/>
+                    <TextBlock Grid.Column="2" x:Name="SiblingSettingsStatusText" Foreground="Gray" FontSize="11" Margin="8,0,0,0" TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </Grid>
             </StackPanel>
         </GroupBox>
@@ -214,12 +238,10 @@
                 <CheckBox x:Name="SkipReverifyCheck" Content="Skip the re-verify pass (faster, but you won't know if the merge introduced any regressions)" Margin="0,0,0,10"/>
                 <CheckBox x:Name="DisableOtherFourCheck" Content="After generating, disable the source tools' plugins in this MO2 profile (unchecks them in plugins.txt - PatchForeman.esp now carries their work forward)"/>
                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0">
-                    Only unchecks plugins that are currently checked - never touches a mod's files or its
-                    checked state in the mods list, and only the boxes above that are both ticked and
-                    actually resolved (MO2 mode only - Vortex/Direct have no plugins.txt for this to
-                    touch). plugins.txt is backed up first (timestamped, in the same profile folder) and
-                    MO2 may rewrite this file on its own the next time it runs, same as any direct edit
-                    to a load-order file.
+                    Only unchecks plugins that are currently checked, and only for the boxes above that are
+                    ticked (MO2 mode only). plugins.txt is backed up first. Launch PatchForeman from MO2's
+                    executables list: MO2 reloads plugins.txt when PatchForeman closes. If you run it outside
+                    MO2 while MO2 is open, MO2 overwrites the change with its own copy.
                 </TextBlock>
             </StackPanel>
         </GroupBox>
