@@ -44,7 +44,7 @@ public partial class MainWindow : Window
         string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
         bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
-        bool DisableOtherFourAfterMerge);
+        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false);
 
     void LoadPersistedSettings()
     {
@@ -102,6 +102,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(s.FloatingWorldspace)) FloatingWorldspaceBox.Text = s.FloatingWorldspace;
             SkipReverifyCheck.IsChecked = s.SkipReverify;
             DisableOtherFourCheck.IsChecked = s.DisableOtherFourAfterMerge;
+            MatchNeighborsCheck.IsChecked = s.MatchNeighborsToTrustedChain;
             if (!string.IsNullOrEmpty(s.OutputFolder)) OutputFolderBox.Text = s.OutputFolder; // marks _outputFolderAutoSet false via its own TextChanged handler
         }
         catch
@@ -128,7 +129,7 @@ public partial class MainWindow : Window
                 s.Mo2InstancePath, s.Mo2GameDataPath, s.VortexGameDataPath, s.DirectGameDataPath, OutputFolderBox.Text.Trim(),
                 SeamFixerEspBox.Text.Trim(), RoadMaskEspBox.Text.Trim(), TextureFixerEspBox.Text.Trim(), FloatingFixerEspBox.Text.Trim(), SnowFixerEspBox.Text.Trim(),
                 s.IncludeSeamFixer, s.IncludeRoadMask, s.IncludeTextureFixer, s.IncludeFloatingFixer, s.IncludeSnowFixer,
-                s.TrustNorthernRoads, s.FloatingThreshold, s.FloatingWorldspace, s.SkipReverify, s.DisableOtherFourAfterMerge);
+                s.TrustNorthernRoads, s.FloatingThreshold, s.FloatingWorldspace, s.SkipReverify, s.DisableOtherFourAfterMerge, s.MatchNeighborsToTrustedChain);
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsFilePath)!);
             File.WriteAllText(SettingsFilePath, System.Text.Json.JsonSerializer.Serialize(persisted, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
         }
@@ -396,7 +397,7 @@ public partial class MainWindow : Window
         string SeamFixerEsp, string RoadMaskEsp, string TextureFixerEsp, string FloatingFixerEsp, string SnowFixerEsp,
         bool IncludeSeamFixer, bool IncludeRoadMask, bool IncludeTextureFixer, bool IncludeFloatingFixer, bool IncludeSnowFixer,
         bool TrustNorthernRoads, string FloatingThreshold, string FloatingWorldspace, bool SkipReverify,
-        bool DisableOtherFourAfterMerge);
+        bool DisableOtherFourAfterMerge, bool MatchNeighborsToTrustedChain = false);
 
     void SetBusy(bool busy)
     {
@@ -412,7 +413,7 @@ public partial class MainWindow : Window
         IncludeSeamFixerCheck.IsChecked == true, IncludeRoadMaskCheck.IsChecked == true,
         IncludeTextureFixerCheck.IsChecked == true, IncludeFloatingFixerCheck.IsChecked == true, IncludeSnowFixerCheck.IsChecked == true,
         TrustNorthernRoadsCheck.IsChecked == true, FloatingThresholdBox.Text.Trim(), FloatingWorldspaceBox.Text.Trim(),
-        SkipReverifyCheck.IsChecked == true, DisableOtherFourCheck.IsChecked == true);
+        SkipReverifyCheck.IsChecked == true, DisableOtherFourCheck.IsChecked == true, MatchNeighborsCheck.IsChecked == true);
 
     async void RunButton_Click(object sender, RoutedEventArgs e) => await RunOrGenerate(write: false);
     async void GenerateButton_Click(object sender, RoutedEventArgs e) => await RunOrGenerate(write: true);
@@ -476,6 +477,8 @@ public partial class MainWindow : Window
                 $"{result.Stats.CellsHeightAndTextureMerged} merged across tools ({result.Stats.CellsSnowFlagApplied} with a Snow Fixer flag applied), " +
                 $"{result.Stats.PlacedRefsForwarded} placed-reference override(s) from Floating Object Fixer, " +
                 $"{result.Stats.SnowFixerBaseRecordsForwarded} base-record override(s) from Snow Fixer.";
+            if (result.Stats.NeighborMatch is { } nm)
+                resultMsg += $" Neighbor match: {nm.Matched} of {nm.NeighborsConsidered} seamed untouched neighbor(s) matched to the trusted chain.";
             if (reverify is not null)
             {
                 resultMsg += $" Re-verify: height seams {reverify.HeightSeamsBefore}->{reverify.HeightSeamsAfter}, " +
@@ -588,7 +591,7 @@ public partial class MainWindow : Window
                 foreach (var m in resolved.MissingPlugins) Log("  " + m);
             }
 
-            result = MergeEngine.RunForResolvedPlugins(resolved.LoadOrder, sources, pluginName, outputFolder, Log, dryRun: !write);
+            result = MergeEngine.RunForResolvedPlugins(resolved.LoadOrder, sources, pluginName, outputFolder, Log, dryRun: !write, s.MatchNeighborsToTrustedChain);
             loadOrderForReverify = resolved.LoadOrder;
             resolveDataFile = resolved.ResolveDataFile;
         }
@@ -602,7 +605,7 @@ public partial class MainWindow : Window
             Log($"Game Data path: {dataFolder}");
             Log("");
 
-            result = MergeEngine.RunForDirectDataFolder(dataFolder, sources, pluginName, outputFolder, Log, dryRun: !write);
+            result = MergeEngine.RunForDirectDataFolder(dataFolder, sources, pluginName, outputFolder, Log, dryRun: !write, s.MatchNeighborsToTrustedChain);
 
             // ReverifyPass needs the same Mo2Resolver.ResolvedPlugin shape
             // MergeEngine.RunForDirectDataFolder builds internally for its

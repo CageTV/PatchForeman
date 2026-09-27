@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PatchForeman.UI"
         mc:Ignorable="d"
-        Title="Patch Foreman" Height="920" Width="860" MinHeight="760" MinWidth="760">
+        Title="Patch Foreman" Height="980" Width="860" MinHeight="760" MinWidth="760">
     <Window.Resources>
         <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
@@ -204,6 +204,13 @@
                     <TextBlock Grid.Column="3" Text="Floating-object worldspace filter:"/>
                     <TextBox Grid.Column="4" x:Name="FloatingWorldspaceBox" Text="Tamriel"/>
                 </Grid>
+                <CheckBox x:Name="MatchNeighborsCheck" Content="Match untouched neighbor cells to the trusted chain where they leave a seam against PatchForeman's cells" Margin="0,0,0,2"/>
+                <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,0,0,8">
+                    Chain, last wins: Skyrim &gt; Update &gt; Dawnguard &gt; HearthFires &gt; Dragonborn &gt; Landscape and Water Fixes &gt;
+                    Unique Locations Riverwood Forest &gt; Lux Via (their patches included). Skips Northern Roads cells, cells with water,
+                    and cells where a placed object would move. Only applies when it shrinks the seam without making any edge worse.
+                    Copies terrain shape only - the neighbor keeps its own textures and snow flags.
+                </TextBlock>
                 <CheckBox x:Name="SkipReverifyCheck" Content="Skip the re-verify pass (faster, but you won't know if the merge introduced any regressions)" Margin="0,0,0,10"/>
                 <CheckBox x:Name="DisableOtherFourCheck" Content="After generating, disable the source tools' plugins in this MO2 profile (unchecks them in plugins.txt - PatchForeman.esp now carries their work forward)"/>
                 <TextBlock TextWrapping="Wrap" Foreground="Gray" FontSize="11" Margin="20,2,0,0">

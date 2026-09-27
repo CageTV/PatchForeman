@@ -32,7 +32,11 @@ game's 7-layer-per-quadrant cap).
 **Optional 5th input: Snow Fixer.** If you also run a Snow Fixer-style tool (its entire contribution is a
 per-record "considered snow" flag), PatchForeman can fold that in too via `--snow-fixer-esp` /
 the UI's Snow Fixer checkbox. It's treated as additive-only, never as a cell's primary source of
-truth — see [CHANGELOG.md](CHANGELOG.md) v0.2.0 for exactly what that means.
+truth — only its snow changes are applied, onto the terrain your other mods produce. See
+[CHANGELOG.md](CHANGELOG.md) v0.2.3 for exactly what that means.
+
+**Since v0.2.3 the merged plugin replaces all five source outputs**, so you can disable them after
+merging and free those plugin slots.
 
 ## What it does
 
@@ -88,6 +92,7 @@ PatchForeman.exe --mo2 <instancePath> <profileName> [gameDataPath]
     [--floating-fixer-esp="FloatingObjectFixes.esp"]
     [--snow-fixer-esp="SnowFixer.esp"]
     [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace="Tamriel"]
+    [--match-neighbors-to-trusted-chain]
 ```
 
 Defaults to a dry run — pass `--write` to actually produce the merged plugin.

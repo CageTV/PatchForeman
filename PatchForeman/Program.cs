@@ -1,4 +1,4 @@
-// PatchForeman CLI - the "5th app" that merges the 4 sibling fixer tools'
+﻿// PatchForeman CLI - the "5th app" that merges the 4 sibling fixer tools'
 // separately-generated output ESPs into one final plugin. See MergeEngine.cs
 // for the merge design, ReverifyPass.cs for the post-merge re-verification,
 // and NOTES.md for what's built vs. not yet.
@@ -11,7 +11,7 @@
 //       [--texture-fixer-esp="LandscapeTextureFixes.esp"]
 //       [--floating-fixer-esp="FloatingObjectFixes.esp"]
 //       [--snow-fixer-esp="SnowFixer.esp"]
-//       [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace="Tamriel"]
+//       [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace="Tamriel"] [--match-neighbors-to-trusted-chain]
 //
 // Defaults to --dry-run - this is a brand-new, not-yet-in-game-tested tool.
 // Pass --write explicitly to actually produce the merged plugin on disk.
@@ -34,7 +34,7 @@ if (args.Length == 0 || args[0] != "--mo2")
     Console.WriteLine("      [--texture-fixer-esp=\"LandscapeTextureFixes.esp\"]");
     Console.WriteLine("      [--floating-fixer-esp=\"FloatingObjectFixes.esp\"]");
     Console.WriteLine("      [--snow-fixer-esp=\"SnowFixer.esp\"]");
-    Console.WriteLine("      [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace=\"Tamriel\"]");
+    Console.WriteLine("      [--trust-northern-roads] [--floating-threshold=96] [--floating-worldspace=\"Tamriel\"] [--match-neighbors-to-trusted-chain]");
     Console.WriteLine("  (defaults to a DRY RUN - logs what would be merged, writes nothing;");
     Console.WriteLine("   pass --write to actually produce the merged plugin and re-verify it)");
     Pause();
@@ -55,6 +55,7 @@ var outputName = StringArg(args, "--output=") ?? "PatchForeman.esp";
 var dryRun = !args.Contains("--write");
 var skipReverify = args.Contains("--skip-reverify");
 var trustNorthernRoads = args.Contains("--trust-northern-roads");
+var matchNeighbors = args.Contains("--match-neighbors-to-trusted-chain");
 var floatingThreshold = float.TryParse(StringArg(args, "--floating-threshold="), out var ft) ? ft : 96f;
 var floatingWorldspace = StringArg(args, "--floating-worldspace=") ?? "Tamriel";
 var sources = new SourceToolPlugins(
@@ -84,7 +85,7 @@ try
     }
 
     var result = MergeEngine.RunForResolvedPlugins(
-        resolved.LoadOrder, sources, outputName, AppContext.BaseDirectory, Console.WriteLine, dryRun);
+        resolved.LoadOrder, sources, outputName, AppContext.BaseDirectory, Console.WriteLine, dryRun, matchNeighbors);
 
     Console.WriteLine();
     Console.WriteLine($"Cells from a single source tool: {result.Stats.CellsFromOneSource}");
@@ -94,6 +95,8 @@ try
     Console.WriteLine($"Cells with a Snow Fixer flag applied: {result.Stats.CellsSnowFlagApplied}");
     Console.WriteLine($"Cells skipped as Snow-Fixer-only (no trusted tool touched them too): {result.Stats.CellsSnowFixerOnlySkipped}");
     Console.WriteLine($"Base-record (Static/Furniture/MoveableStatic) overrides forwarded from Snow Fixer: {result.Stats.SnowFixerBaseRecordsForwarded}");
+    if (result.Stats.NeighborMatch is { } nm)
+        Console.WriteLine($"Untouched neighbors matched to the trusted chain: {nm.Matched} of {nm.NeighborsConsidered} seamed neighbor(s) considered");
     if (!result.DryRun)
         Console.WriteLine($"Output: {result.OutputPath}");
 

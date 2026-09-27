@@ -59,7 +59,21 @@ public record CellMergeStats(
     int PlacedRefsForwarded,
     int CellsSnowFlagApplied,
     int CellsSnowFixerOnlySkipped,
-    int SnowFixerBaseRecordsForwarded);
+    int SnowFixerBaseRecordsForwarded,
+    NeighborMatchStats? NeighborMatch = null);
+
+// Outcome of the optional neighbor-match pass (see NeighborChainMatcher.cs).
+// Every candidate neighbor lands in exactly one bucket, so the buckets sum to
+// NeighborsConsidered - nothing is silently dropped.
+public record NeighborMatchStats(
+    int NeighborsConsidered,
+    int Matched,
+    int SkippedNorthernRoads,
+    int SkippedNoChainData,
+    int SkippedAlreadyMatchesChain,
+    int SkippedWater,
+    int SkippedReference,
+    int SkippedNoImprovement);
 
 public record MergeResult(CellMergeStats Stats, string OutputPath, bool DryRun);
 
@@ -73,7 +87,8 @@ public static class MergeEngine
         string outputPluginName,
         string outputDirectory,
         Action<string> log,
-        bool dryRun)
+        bool dryRun,
+        bool matchNeighborsToTrustedChain = false)
     {
         var mergedFolder = Path.Combine(Path.GetTempPath(), "PatchForeman-" + Guid.NewGuid().ToString("N"));
         log($"Staging {loadOrder.Count} plugin files into {mergedFolder} ...");
@@ -87,7 +102,7 @@ public static class MergeEngine
                 .WithTargetDataFolder(mergedFolder)
                 .Build();
             var priorityIndex = modKeys.Select((k, idx) => (k, idx)).ToDictionary(x => x.k, x => x.idx);
-            return GenerateCore(env.LinkCache, env.LoadOrder, priorityIndex, mergedFolder, sources, outputPluginName, outputDirectory, log, dryRun, loadOrder);
+            return GenerateCore(env.LinkCache, env.LoadOrder, priorityIndex, mergedFolder, sources, outputPluginName, outputDirectory, log, dryRun, loadOrder, matchNeighborsToTrustedChain);
         }
         finally
         {
@@ -111,7 +126,8 @@ public static class MergeEngine
         string outputPluginName,
         string outputDirectory,
         Action<string> log,
-        bool dryRun)
+        bool dryRun,
+        bool matchNeighborsToTrustedChain = false)
     {
         using var env = GameEnvironmentBuilder<ISkyrimMod, ISkyrimModGetter>
             .Create(GameRelease.SkyrimSE)
@@ -132,7 +148,7 @@ public static class MergeEngine
             .Select(listing => new Mo2Resolver.ResolvedPlugin(listing.ModKey.FileName, Path.Combine(dataFolderPath, listing.ModKey.FileName)))
             .ToList();
 
-        return GenerateCore(env.LinkCache, env.LoadOrder, priorityIndex, dataFolderPath, sources, outputPluginName, outputDirectory, log, dryRun, loadOrder);
+        return GenerateCore(env.LinkCache, env.LoadOrder, priorityIndex, dataFolderPath, sources, outputPluginName, outputDirectory, log, dryRun, loadOrder, matchNeighborsToTrustedChain);
     }
 
     static bool IsPluginPresent(List<Mo2Resolver.ResolvedPlugin> loadOrder, string fileName) =>
@@ -148,7 +164,8 @@ public static class MergeEngine
         string outputDirectory,
         Action<string> log,
         bool dryRun,
-        List<Mo2Resolver.ResolvedPlugin> loadOrder)
+        List<Mo2Resolver.ResolvedPlugin> loadOrder,
+        bool matchNeighborsToTrustedChain)
     {
         // Fail loud, not silent, if a source tool's output isn't even active -
         // a merge that quietly skips a whole tool's contribution is worse
@@ -178,10 +195,38 @@ public static class MergeEngine
 
         int cellsFromOneSource = 0, cellsMerged = 0, waterDisagreements = 0, refsForwarded = 0;
         int cellsSnowFlagApplied = 0, cellsSnowFixerOnlySkipped = 0, snowFixerBaseRecordsForwarded = 0;
+        int cellsFieldsOnlyForwarded = 0, cellsLandscapeFromOtherTool = 0, cellsSnowOnlyApplied = 0;
+
+        // Every tool-generated plugin (this family's, Snow Fixer, and this
+        // run's own output) - read AROUND these to find "what the mods
+        // underneath say" for a cell.
+        var toolOutputs = new HashSet<string>(TrustResolver.SiblingToolOutputs, StringComparer.OrdinalIgnoreCase);
+        toolOutputs.UnionWith(TrustResolver.ThirdPartyGeneratedOutputs);
+        toolOutputs.UnionWith(new[] { sources.LandscapeSeamFixer, sources.RoadMaskMerger, sources.LandscapeTextureFixer,
+            sources.FloatingObjectFixer, sources.SnowFixer, outputPluginName });
+        toolOutputs.Remove(string.Empty);
+
+        // The terrain PatchForeman itself ends up writing for each exterior
+        // cell, keyed by (worldspace, grid) - the neighbor-match pass needs to
+        // know which cells are "ours" and what their final edges look like.
+        var writtenLandscapes = new Dictionary<(FormKey Worldspace, int X, int Y), ILandscapeGetter>();
+        void RecordWritten(IModContext<ISkyrimMod, ISkyrimModGetter, ICell, ICellGetter> ctx, ICellGetter c, ILandscapeGetter? land)
+        {
+            if (land is null || c.Grid is null) return;
+            if (!ctx.TryGetParentSimpleContext<IWorldspaceGetter>(out var ws)) return;
+            writtenLandscapes[(ws.Record.FormKey, c.Grid.Point.X, c.Grid.Point.Y)] = land;
+        }
 
         // --- Landscape/Cell merge (Landscape Seam Fixer + Road Mask Merger + Landscape Texture Fixer) ---
-        foreach (var context in linkCache.WinningContextOverrides<Cell, ICellGetter>(linkCache))
+        foreach (var winningCellContext in linkCache.WinningContextOverrides<Cell, ICellGetter>(linkCache))
         {
+            // Read around a previous PatchForeman.esp that is still active -
+            // see TryResolveContextExcluding.
+            var context = winningCellContext.ModKey.FileName.String.Equals(outputPluginName, StringComparison.OrdinalIgnoreCase)
+                ? linkCache.ResolveAllContexts<Cell, ICellGetter>(winningCellContext.Record.FormKey, ResolveTarget.Winner)
+                    .FirstOrDefault(c => !c.ModKey.FileName.String.Equals(outputPluginName, StringComparison.OrdinalIgnoreCase))
+                : winningCellContext;
+            if (context is null) continue;
             var cell = context.Record;
             if (cell.Grid is null) continue; // interior cell - none of the 3 landscape tools ever touch these
 
@@ -224,18 +269,54 @@ public static class MergeEngine
                 + (textureFixerCell?.Landscape is not null ? 1 : 0);
             var snowTouches = snowFixerCell?.Landscape is not null;
 
+            // Cell-level fields (Water/WaterHeight/Flags/refs) come from the
+            // first of the 3 trusted tools that overrode the cell AT ALL - the
+            // same order the merged branch below uses. That is NOT necessarily
+            // a tool that touched the terrain: in-game, LAND is its own record,
+            // so a tool's cell-only override (e.g. Seam Fixer's water pass) and
+            // another tool's LAND both apply at once. See the 2026-09-26 fix below.
+            var cellFieldSource = seamFixerCell ?? roadMaskCell ?? textureFixerCell;
+
             if (landscapeTouchCount == 0)
             {
-                if (snowTouches)
+                // Snow Fixer-only cells (CHANGED 2026-09-26, user's choice:
+                // "snow flags only"). These used to be skipped, so SnowFixer.esp
+                // could never be disabled after merging (~3,650 cells on the
+                // live profile). Still never trusts Snow Fixer's own copy of the
+                // cell or its terrain: cell fields come from a trusted tool if
+                // one overrode the cell, else from the highest plugin below the
+                // tools; terrain comes from the highest non-tool plugin; only
+                // Snow Fixer's verified snow changes are applied on top.
+                var cellSourceForWrite = cellFieldSource
+                    ?? (snowTouches ? WinningCellExcluding(cell.FormKey, linkCache, toolOutputs) : null);
+                if (cellSourceForWrite is not null)
                 {
-                    // Snow Fixer touched this cell but none of the 3 trusted
-                    // tools did - no verified-safe Water/Persistent/Temporary
-                    // baseline to forward from, so this cell is skipped
-                    // rather than trusting Snow Fixer's own copy of fields
-                    // it was never confirmed to preserve correctly. Counted,
-                    // not silently dropped.
-                    cellsSnowFixerOnlySkipped++;
-                    log($"  ({cell.Grid.Point.X},{cell.Grid.Point.Y}): Snow Fixer touched this cell but none of the 3 trusted landscape tools did - skipped (no verified-safe cell baseline to apply its snow flag onto).");
+                    var writableOnly = context.GetOrAddAsOverride(patchMod);
+                    // FIXED 2026-09-26: a trusted tool changed only cell-level
+                    // fields here (Seam Fixer's water restoration, 462 cells on
+                    // the live profile) and this branch used to drop the cell -
+                    // so disabling the source plugins after merging silently
+                    // lost those fixes.
+                    CopyCellVerbatim(cellSourceForWrite, writableOnly);
+                    writableOnly.Landscape = null;
+                    if (cellFieldSource is not null) cellsFieldsOnlyForwarded++;
+
+                    if (snowTouches)
+                    {
+                        var baseLandscape = WinningLandscapeExcluding(cell.FormKey, linkCache, toolOutputs);
+                        if (baseLandscape is null)
+                        {
+                            cellsSnowFixerOnlySkipped++;
+                            log($"  ({cell.Grid.Point.X},{cell.Grid.Point.Y}): Snow Fixer touched this cell but no non-tool plugin has terrain for it - snow changes not applied.");
+                        }
+                        else
+                        {
+                            var snowApplied = baseLandscape.DeepCopy();
+                            ApplySnowChanges(snowApplied, snowFixerCell!.Landscape!);
+                            writableOnly.Landscape = snowApplied;
+                            cellsSnowOnlyApplied++;
+                        }
+                    }
                 }
                 continue;
             }
@@ -247,9 +328,25 @@ public static class MergeEngine
                 // preserves everything else about the cell (Persistent/
                 // Temporary/Water/Flags), so just forward its WHOLE cell
                 // body verbatim. No combination needed.
-                var soleSource = seamFixerCell ?? roadMaskCell ?? textureFixerCell!;
+                //
+                // FIXED 2026-09-26 (user report: Northern Roads terrain missing
+                // around Riften, cells 00BD18/00BD19/00BD37/00BD38): this took
+                // "the first tool that overrode the cell" as the whole source -
+                // `seamFixerCell ?? roadMaskCell ?? ...` - and Seam Fixer is
+                // checked first. Where Seam Fixer had only a cell-level override
+                // (no LAND) and Road Mask Merger or Texture Fixer had the terrain,
+                // the terrain-less Seam Fixer cell was copied and the real terrain
+                // thrown away. 174 cells on the live profile. With the source
+                // plugins disabled after merging, the un-roaded terrain from
+                // whatever loaded before them (CS Water Mod.esp at Riften) won in-game.
+                var landSource = seamFixerCell?.Landscape is not null ? seamFixerCell
+                    : roadMaskCell?.Landscape is not null ? roadMaskCell
+                    : textureFixerCell!;
                 var soleWritable = context.GetOrAddAsOverride(patchMod);
-                CopyCellVerbatim(soleSource, soleWritable);
+                CopyCellVerbatim(cellFieldSource!, soleWritable);
+                soleWritable.Landscape = landSource.Landscape!.DeepCopy();
+                if (!ReferenceEquals(cellFieldSource, landSource)) cellsLandscapeFromOtherTool++;
+                RecordWritten(context, cell, landSource.Landscape);
                 cellsFromOneSource++;
                 continue;
             }
@@ -334,12 +431,13 @@ public static class MergeEngine
             // the union/height-priority logic above just did.
             if (snowFixerCell?.Landscape is { } snowLandscape)
             {
-                mergedLandscape.Flags = snowLandscape.Flags;
+                ApplySnowChanges(mergedLandscape, snowLandscape);
                 cellsSnowFlagApplied++;
                 log($"  ({cell.Grid.Point.X},{cell.Grid.Point.Y}): applied Snow Fixer's Landscape.Flags on top of {heightSourceName}'s height/texture.");
             }
 
             writable.Landscape = mergedLandscape;
+            RecordWritten(context, cell, mergedLandscape);
 
             // Cell-level fields (Water/WaterHeight/Flags/Persistent/Temporary):
             // every one of the 3 tools already forwards these UNCHANGED from
@@ -374,6 +472,10 @@ public static class MergeEngine
             foreach (var t in fieldSource.Temporary) writable.Temporary.Add((IPlaced)t.DeepCopy());
         }
 
+        log($"Single-source cells whose terrain came from a different tool than their cell-level fields: {cellsLandscapeFromOtherTool}. " +
+            $"Cells forwarded with cell-level fields only (a trusted tool changed no terrain there, e.g. Seam Fixer water): {cellsFieldsOnlyForwarded}. " +
+            $"Snow Fixer-only cells with its snow changes applied onto the mods-underneath terrain: {cellsSnowOnlyApplied} ({cellsSnowFixerOnlySkipped} had no terrain to apply them to).");
+
         // --- Floating Object Fixer's contribution: individual PlacedObject/
         // PlacedNpc overrides, no overlap with the landscape tools above.
         // Reads directly from FOF's OWN plugin file (via EnumerateMajorRecords
@@ -395,7 +497,7 @@ public static class MergeEngine
                 foreach (var placedObj in fofMod.EnumerateMajorRecords<IPlacedObjectGetter>())
                 {
                     if (placedObj.Placement is null) continue; // matches FloatingObjectFixer.cs's own guard - a ref with no placement has nothing for it to have corrected
-                    if (!linkCache.TryResolveContext<PlacedObject, IPlacedObjectGetter>(placedObj.FormKey, out var winningCtx)) continue;
+                    if (!TryResolveContextExcluding<PlacedObject, IPlacedObjectGetter>(linkCache, placedObj.FormKey, outputPluginName, out var winningCtx)) continue;
                     var writable = winningCtx.GetOrAddAsOverride(patchMod);
                     if (writable.Placement is null) { log($"  WARNING: {placedObj.FormKey} - winning context has no Placement to set Position on; skipped."); continue; }
                     writable.Placement.Position = placedObj.Placement.Position;
@@ -404,7 +506,7 @@ public static class MergeEngine
                 foreach (var placedNpc in fofMod.EnumerateMajorRecords<IPlacedNpcGetter>())
                 {
                     if (placedNpc.Placement is null) continue;
-                    if (!linkCache.TryResolveContext<PlacedNpc, IPlacedNpcGetter>(placedNpc.FormKey, out var winningCtx)) continue;
+                    if (!TryResolveContextExcluding<PlacedNpc, IPlacedNpcGetter>(linkCache, placedNpc.FormKey, outputPluginName, out var winningCtx)) continue;
                     var writable = winningCtx.GetOrAddAsOverride(patchMod);
                     if (writable.Placement is null) { log($"  WARNING: {placedNpc.FormKey} - winning context has no Placement to set Position on; skipped."); continue; }
                     writable.Placement.Position = placedNpc.Placement.Position;
@@ -437,19 +539,19 @@ public static class MergeEngine
                 var snowMod = snowListing.Mod;
                 foreach (var stat in snowMod.EnumerateMajorRecords<IStaticGetter>())
                 {
-                    if (!linkCache.TryResolveContext<Static, IStaticGetter>(stat.FormKey, out var winningCtx)) continue;
+                    if (!TryResolveContextExcluding<Static, IStaticGetter>(linkCache, stat.FormKey, outputPluginName, out var winningCtx)) continue;
                     winningCtx.GetOrAddAsOverride(patchMod).Flags = stat.Flags;
                     snowFixerBaseRecordsForwarded++;
                 }
                 foreach (var furn in snowMod.EnumerateMajorRecords<IFurnitureGetter>())
                 {
-                    if (!linkCache.TryResolveContext<Furniture, IFurnitureGetter>(furn.FormKey, out var winningCtx)) continue;
+                    if (!TryResolveContextExcluding<Furniture, IFurnitureGetter>(linkCache, furn.FormKey, outputPluginName, out var winningCtx)) continue;
                     winningCtx.GetOrAddAsOverride(patchMod).Flags = furn.Flags;
                     snowFixerBaseRecordsForwarded++;
                 }
                 foreach (var mstt in snowMod.EnumerateMajorRecords<IMoveableStaticGetter>())
                 {
-                    if (!linkCache.TryResolveContext<MoveableStatic, IMoveableStaticGetter>(mstt.FormKey, out var winningCtx)) continue;
+                    if (!TryResolveContextExcluding<MoveableStatic, IMoveableStaticGetter>(linkCache, mstt.FormKey, outputPluginName, out var winningCtx)) continue;
                     winningCtx.GetOrAddAsOverride(patchMod).Flags = mstt.Flags;
                     snowFixerBaseRecordsForwarded++;
                 }
@@ -458,15 +560,40 @@ public static class MergeEngine
             }
         }
 
+        // --- Optional: match untouched neighbors to the trusted chain ---
+        // Runs after the landscape merge (it needs PatchForeman's own final
+        // edges) and only when ticked. See NeighborChainMatcher.cs.
+        NeighborMatchStats? neighborStats = null;
+        if (matchNeighborsToTrustedChain)
+        {
+            var mastersByPlugin = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var listing in loadOrderMods.ListedOrder)
+            {
+                if (listing.Mod is null) continue;
+                mastersByPlugin[listing.ModKey.FileName] = listing.Mod.ModHeader.MasterReferences
+                    .Select(m => m.Master.FileName.String)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            var excluded = new HashSet<string>(TrustResolver.SiblingToolOutputs, StringComparer.OrdinalIgnoreCase)
+            {
+                sources.LandscapeSeamFixer, sources.RoadMaskMerger, sources.LandscapeTextureFixer,
+                sources.FloatingObjectFixer, sources.SnowFixer, outputPluginName,
+            };
+            excluded.Remove(string.Empty);
+            neighborStats = NeighborChainMatcher.Run(linkCache, priorityIndex, mastersByPlugin, outputPluginName,
+                excluded, writtenLandscapes, patchMod, log);
+        }
+
         var stats = new CellMergeStats(cellsFromOneSource, cellsMerged, waterDisagreements, refsForwarded,
-            cellsSnowFlagApplied, cellsSnowFixerOnlySkipped, snowFixerBaseRecordsForwarded);
+            cellsSnowFlagApplied, cellsSnowFixerOnlySkipped, snowFixerBaseRecordsForwarded, neighborStats);
 
         if (dryRun)
         {
             log($"[DRY RUN] Would write {outputPluginName} with {cellsFromOneSource + cellsMerged} cell(s) touched " +
                 $"({cellsFromOneSource} from a single source tool, {cellsMerged} merged across tools, {cellsSnowFlagApplied} with a Snow Fixer flag applied, " +
                 $"{cellsSnowFixerOnlySkipped} skipped as Snow-Fixer-only) and {refsForwarded} " +
-                $"placed-reference override(s) from Floating Object Fixer, {snowFixerBaseRecordsForwarded} base-record override(s) from Snow Fixer. Nothing written.");
+                $"placed-reference override(s) from Floating Object Fixer, {snowFixerBaseRecordsForwarded} base-record override(s) from Snow Fixer" +
+                (neighborStats is null ? "" : $", {neighborStats.Matched} untouched neighbor(s) matched to the trusted chain") + ". Nothing written.");
             return new MergeResult(stats, string.Empty, DryRun: true);
         }
 
@@ -486,6 +613,47 @@ public static class MergeEngine
 
         return new MergeResult(stats, outputPath, DryRun: false);
     }
+
+    // FIXED 2026-09-26: every "copy the current winner, then change one field"
+    // step used the load-order winner as its base - which, on any re-run, is
+    // the PREVIOUS PatchForeman.esp still active in the profile. That fed old
+    // output back in, and crashed the write outright on the live profile:
+    // the previous PatchForeman.esp's copy of RockCliff01Rocks01SnowLight
+    // (02ED76:Skyrim.esm) could not be deep-copied ("Specified argument was out
+    // of the range of valid values" in StaticBinaryOverlay.get_Unused).
+    static bool TryResolveContextExcluding<TMajor, TMajorGetter>(
+        ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, FormKey formKey, string excludePlugin,
+        out IModContext<ISkyrimMod, ISkyrimModGetter, TMajor, TMajorGetter> context)
+        where TMajor : class, IMajorRecord, TMajorGetter
+        where TMajorGetter : class, IMajorRecordGetter
+    {
+        context = linkCache.ResolveAllContexts<TMajor, TMajorGetter>(formKey, ResolveTarget.Winner)
+            .FirstOrDefault(c => !c.ModKey.FileName.String.Equals(excludePlugin, StringComparison.OrdinalIgnoreCase))!;
+        return context is not null;
+    }
+
+    // Snow Fixer's verified LAND changes, confirmed on LAND 00AB35 against the
+    // plugins under it (2026-09-26): Flags (the vertex-colour bit cleared,
+    // 31 -> 29) and VertexColors removed. Heights and texture layers identical.
+    // Copying only Flags (the old behavior) left the flag saying "no vertex
+    // colours" while the data still had them.
+    static void ApplySnowChanges(Landscape target, ILandscapeGetter snow)
+    {
+        target.Flags = snow.Flags;
+        if (snow.VertexColors is null) target.VertexColors = null;
+    }
+
+    // Highest-priority version of the cell / its terrain from any plugin that
+    // is NOT a tool output (ResolveAllContexts yields winner first).
+    static ICellGetter? WinningCellExcluding(FormKey cellFormKey,
+        ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, HashSet<string> excluded) =>
+        linkCache.ResolveAllContexts<Cell, ICellGetter>(cellFormKey, ResolveTarget.Winner)
+            .FirstOrDefault(c => !excluded.Contains(c.ModKey.FileName.String))?.Record;
+
+    static ILandscapeGetter? WinningLandscapeExcluding(FormKey cellFormKey,
+        ILinkCache<ISkyrimMod, ISkyrimModGetter> linkCache, HashSet<string> excluded) =>
+        linkCache.ResolveAllContexts<Cell, ICellGetter>(cellFormKey, ResolveTarget.Winner)
+            .FirstOrDefault(c => c.Record.Landscape is not null && !excluded.Contains(c.ModKey.FileName.String))?.Record.Landscape;
 
     static void CopyCellVerbatim(ICellGetter source, Cell writable)
     {
