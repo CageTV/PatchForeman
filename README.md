@@ -1,6 +1,6 @@
 # PatchForeman
 
-**Current version: 0.2.0** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
+**Current version: 0.2.5** — see [CHANGELOG.md](CHANGELOG.md) for what's new.
 
 > **Confirmed working by the maintainer** on a real, large (1000+ plugin) load order as of v0.2.0.
 > Still young — review the log carefully (especially any regressions the re-verify pass flags) before
