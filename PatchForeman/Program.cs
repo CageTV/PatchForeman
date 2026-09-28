@@ -78,6 +78,8 @@ try
 {
     var resolved = Mo2Resolver.Resolve(instancePath, profileName, gameDataPath);
     Console.WriteLine($"Resolved {resolved.LoadOrder.Count} active plugins to real files.");
+    if (resolved.GameDataPathCorrectedFrom is not null)
+        Console.WriteLine($"NOTE: Game Data path \"{resolved.GameDataPathCorrectedFrom}\" is the game's install folder - using its Data subfolder instead.");
     if (resolved.MissingPlugins.Count > 0)
     {
         Console.WriteLine($"WARNING: {resolved.MissingPlugins.Count} active plugins could not be found:");
