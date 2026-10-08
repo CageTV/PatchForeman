@@ -48,7 +48,11 @@ merging and free those plugin slots.
    Landscape Texture Fixer's, and Floating Object Fixer's own detection logic against it — once on your
    original load order, once with the merged plugin layered on top — and reports whether anything got
    *worse* (a real regression) rather than just declaring success.
-3. **ESL flagging**: automatically checks whether the merged plugin qualifies for the ESL flag (using the
+3. **Automatic split on the master limit**: a plugin can hold at most 255 masters. If the merged patch
+   needs more, it is written as `PatchForeman.esp`, `PatchForeman_2.esp`, ... (like Synthesis's
+   "Split Files if Max Masters Exceeded"). Enable every file and keep them adjacent in the load order.
+   When it fits in one plugin, nothing changes.
+4. **ESL flagging**: automatically checks whether the merged plugin qualifies for the ESL flag (using the
    same algorithm as SSEEdit's own "Find ESP plugins which could be turned into ESL" script) and flags it
    if so — this tool's output almost never adds brand-new records, so it qualifies essentially every run.
 

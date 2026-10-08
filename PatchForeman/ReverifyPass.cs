@@ -47,7 +47,7 @@ public static class ReverifyPass
 {
     public static ReverifySummary Run(
         List<Mo2Resolver.ResolvedPlugin> originalLoadOrder,
-        string patchForemanEspPath,
+        IReadOnlyList<string> patchForemanEspPaths,
         Func<string, string?>? resolveAssetPath,
         Action<string> log,
         bool trustNorthernRoads,
@@ -62,10 +62,11 @@ public static class ReverifyPass
 
         log("");
         log("=== Re-verify pass, step 2/2: with PatchForeman appended as highest priority ===");
-        var extended = new List<Mo2Resolver.ResolvedPlugin>(originalLoadOrder)
-        {
-            new("PatchForeman.esp", patchForemanEspPath),
-        };
+        // One entry per written file: a patch that overflowed the master limit
+        // is several adjacent plugins (PatchForeman.esp, PatchForeman_2.esp, ...).
+        var extended = new List<Mo2Resolver.ResolvedPlugin>(originalLoadOrder);
+        foreach (var path in patchForemanEspPaths)
+            extended.Add(new(Path.GetFileName(path), path));
         var afterHeight = SeamDetector.RunForResolvedPlugins(extended, log, trustNorthernRoads);
         var afterTexture = TextureLayerDetector.RunForResolvedPlugins(extended, log);
         var afterFloating = FloatingObjectFixer.RunDetectionForResolvedPlugins(

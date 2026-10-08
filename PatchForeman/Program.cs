@@ -100,13 +100,16 @@ try
     if (result.Stats.NeighborMatch is { } nm)
         Console.WriteLine($"Untouched neighbors matched to the trusted chain: {nm.Matched} of {nm.NeighborsConsidered} seamed neighbor(s) considered");
     if (!result.DryRun)
-        Console.WriteLine($"Output: {result.OutputPath}");
+    {
+        foreach (var path in result.OutputPaths)
+            Console.WriteLine($"Output: {path}");
+    }
 
     if (!result.DryRun && !skipReverify)
     {
         Console.WriteLine();
         var reverify = ReverifyPass.Run(
-            resolved.LoadOrder, result.OutputPath, resolved.ResolveDataFile, Console.WriteLine,
+            resolved.LoadOrder, result.OutputPaths, resolved.ResolveDataFile, Console.WriteLine,
             trustNorthernRoads, floatingThreshold, floatingWorldspace);
 
         // Same File.WriteAllLines-to-AppContext.BaseDirectory convention every

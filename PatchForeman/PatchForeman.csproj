@@ -16,9 +16,9 @@
          executables list. Synthesis, which runs fine under MO2, ships with
          this flag off too. -->
     <CETCompat>false</CETCompat>
-    <Version>0.2.5</Version>
-    <AssemblyVersion>0.2.5.0</AssemblyVersion>
-    <FileVersion>0.2.5.0</FileVersion>
+    <Version>0.2.6</Version>
+    <AssemblyVersion>0.2.6.0</AssemblyVersion>
+    <FileVersion>0.2.6.0</FileVersion>
   </PropertyGroup>
 
 </Project>

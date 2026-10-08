@@ -33,6 +33,7 @@
 using Mutagen.Bethesda;
 using Mutagen.Bethesda.Environments;
 using Mutagen.Bethesda.Plugins;
+using Mutagen.Bethesda.Plugins.Analysis;
 using Mutagen.Bethesda.Plugins.Cache;
 using Mutagen.Bethesda.Plugins.Order;
 using Mutagen.Bethesda.Plugins.Records;
@@ -75,7 +76,15 @@ public record NeighborMatchStats(
     int SkippedReference,
     int SkippedNoImprovement);
 
-public record MergeResult(CellMergeStats Stats, string OutputPath, bool DryRun);
+// OutputPath is the base plugin (PatchForeman.esp). When the merged patch needs
+// more than the engine's 255-master limit it is written as several adjacent
+// plugins (PatchForeman.esp, PatchForeman_2.esp, ...); OutputPaths lists every
+// one in load order, and always starts with OutputPath.
+public record MergeResult(CellMergeStats Stats, string OutputPath, bool DryRun, IReadOnlyList<string>? AllOutputPaths = null)
+{
+    public IReadOnlyList<string> OutputPaths =>
+        AllOutputPaths ?? (string.IsNullOrEmpty(OutputPath) ? Array.Empty<string>() : new[] { OutputPath });
+}
 
 public static class MergeEngine
 {
@@ -600,6 +609,21 @@ public static class MergeEngine
         Directory.CreateDirectory(outputDirectory);
         var outputPath = Path.Combine(outputDirectory, outputPluginName);
 
+        var written = WritePatch(patchMod, outputPath, dataFolderForWrite, log);
+        return new MergeResult(stats, outputPath, DryRun: false, written);
+    }
+
+    // Writes the merged patch. A plugin can reference at most 255 masters; on a
+    // big load order the overrides this patch carries can come from more
+    // plugins than that. Mutagen's auto-split (the same mechanism Synthesis's
+    // "Split Files if Max Masters Exceeded" uses) then writes adjacent siblings
+    // - Name.esp, Name_2.esp, Name_3.esp - each within the limit, with a shared
+    // master list where they overlap. When nothing overflows the output is a
+    // single plugin exactly as before. Returns every file written, base first.
+    public static IReadOnlyList<string> WritePatch(SkyrimMod patchMod, string outputPath, string dataFolderForWrite, Action<string> log)
+    {
+        RetireStaleSplitSiblings(outputPath, log);
+
         var eslResult = EslEligibility.CheckAndFlag(patchMod);
         log(eslResult.Summary);
 
@@ -609,9 +633,48 @@ public static class MergeEngine
             .WithNoLoadOrder()
             .WithDataFolder(dataFolderForWrite)
             .WithAllParentMasters()
+            .WithAutoSplit()
             .Write(patchMod);
 
-        return new MergeResult(stats, outputPath, DryRun: false);
+        var files = EnumerateSplitSiblings(outputPath);
+        files.Insert(0, outputPath);
+        if (files.Count > 1)
+        {
+            log($"Master limit exceeded: the patch was split into {files.Count} plugins. ALL of them must be enabled, " +
+                "and they must sit next to each other in the load order, in this order:");
+            foreach (var f in files) log("  " + Path.GetFileName(f));
+        }
+        return files;
+    }
+
+    // Existing PatchForeman_2.esp, _3.esp, ... next to the output, sorted by index.
+    static List<string> EnumerateSplitSiblings(string outputPath)
+    {
+        var dir = Path.GetDirectoryName(outputPath)!;
+        var baseName = Path.GetFileNameWithoutExtension(outputPath);
+        var ext = Path.GetExtension(outputPath);
+        var found = new List<(int Index, string Path)>();
+        foreach (var candidate in Directory.EnumerateFiles(dir, baseName + "_*" + ext))
+        {
+            if (!Path.GetExtension(candidate).Equals(ext, StringComparison.OrdinalIgnoreCase)) continue;
+            if (MultiModFileAnalysis.IsSplitFileName(Path.GetFileNameWithoutExtension(candidate), baseName, out var index))
+                found.Add((index, candidate));
+        }
+        return found.OrderBy(x => x.Index).Select(x => x.Path).ToList();
+    }
+
+    // A previous run that split leaves PatchForeman_2.esp behind; if this run
+    // fits in one plugin that file would linger as an orphan sibling. Move it
+    // aside under the toolkit's backup naming (never deleted, never loadable).
+    static void RetireStaleSplitSiblings(string outputPath, Action<string> log)
+    {
+        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        foreach (var stale in EnumerateSplitSiblings(outputPath))
+        {
+            var bak = stale + ".bak_" + stamp;
+            File.Move(stale, bak);
+            log($"Moved leftover split plugin from a previous run aside: {Path.GetFileName(stale)} -> {Path.GetFileName(bak)}");
+        }
     }
 
     // FIXED 2026-09-26: every "copy the current winner, then change one field"

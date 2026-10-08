@@ -1,5 +1,19 @@
 # PatchForeman — Changelog
 
+## v0.2.6 — 2026-10-08
+
+- **New: the output splits automatically when it needs more than 255 masters.** A plugin can only list
+  255 masters, and on a big load order the records PatchForeman overrides can come from more plugins than
+  that. Instead of failing at the write, the patch is now split into adjacent plugins —
+  `PatchForeman.esp`, `PatchForeman_2.esp`, and so on — the same way Synthesis's "Split Files if Max
+  Masters Exceeded" works. Each file stays within the limit and keeps the ESL flag when it qualifies.
+  Nothing changes when the patch fits in one plugin. The log and result message list every file when a
+  split happens: **enable all of them and keep them next to each other in the load order.**
+- The re-verify pass now layers every split file on top of the load order, not just the first.
+- A `PatchForeman_2.esp` left over from an earlier split run is moved aside as
+  `PatchForeman_2.esp.bak_<timestamp>` when the next run no longer needs it, so it can't linger as an
+  orphan plugin.
+
 ## v0.2.5 — 2026-09-28
 
 - **Fixed: pointing the Game Data path at the game's install folder broke the run.** Using

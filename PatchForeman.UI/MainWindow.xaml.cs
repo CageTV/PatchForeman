@@ -549,6 +549,9 @@ public partial class MainWindow : Window
                     || reverify.FloatingObjectsFlaggedAfter > reverify.FloatingObjectsFlaggedBefore)
                     resultMsg += " Check the log for details - the merge introduced something new.";
             }
+            if (write && result.OutputPaths.Count > 1)
+                resultMsg += $" The patch exceeded the 255-master limit and was split into {result.OutputPaths.Count} plugins " +
+                    $"({string.Join(", ", result.OutputPaths.Select(Path.GetFileName))}) - enable ALL of them and keep them adjacent in the load order.";
             resultMsg += " Review the log before installing.";
             ResultText.Text = resultMsg;
 
@@ -739,7 +742,7 @@ public partial class MainWindow : Window
         {
             Log("");
             reverify = ReverifyPass.Run(
-                loadOrderForReverify, result.OutputPath, resolveDataFile, Log,
+                loadOrderForReverify, result.OutputPaths, resolveDataFile, Log,
                 s.TrustNorthernRoads, floatingThreshold, s.FloatingWorldspace);
 
             // Same outputFolder-not-AppContext.BaseDirectory convention every
